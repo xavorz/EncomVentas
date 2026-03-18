@@ -310,7 +310,11 @@ function formatMoney(n) {
 // ─── RENDER ─────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app');
-  if (!state.user) { app.innerHTML = renderLogin(); return; }
+  if (!state.user) {
+    app.innerHTML = renderLogin();
+    bindEvents();
+    return;
+  }
   app.innerHTML = `
     <div class="app">
       ${renderSidebar()}
