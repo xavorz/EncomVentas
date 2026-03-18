@@ -780,9 +780,14 @@ function renderNewProposal() {
         <div class="card-header"><span class="card-title">4. Servicios de interés</span></div>
         <div class="form-label" style="margin-bottom:8px;">Selecciona los que apliquen</div>
         <div class="checkbox-group" id="services-checkboxes">
-          ${['Producción de evento','Escenario/tarima','Sonido e iluminación','Pantallas/LED','Catering','Stands/exposición','Decoración y ambientación','Fotógrafo/vídeo','Streaming/retransmisión','RRSS y contenido digital','Diseño gráfico','Azafatas/personal','Seguridad','Transporte/logística','Alojamiento','Patrocinio OWN Valencia','Patrocinio Valencia Game City','Activación de marca in-situ','Gamificación/experiencia interactiva'].map(s =>
-            `<label class="checkbox-label" onclick="this.classList.toggle('checked')"><input type="checkbox" value="${s}">${s}</label>`
+          ${['Producción de evento','Escenario/tarima','Sonido e iluminación','Pantallas/LED','Catering','Stands/exposición','Decoración y ambientación','Fotógrafo/vídeo','Streaming/retransmisión','RRSS y contenido digital','Diseño gráfico','Azafatas/personal','Seguridad','Transporte/logística','Alojamiento','Patrocinio OWN Valencia','Patrocinio Valencia Game City','Activación de marca in-situ','Gamificación/experiencia interactiva'].map((s, i) =>
+            `<div class="checkbox-label" data-service="${s}" data-idx="${i}"><span>${s}</span></div>`
           ).join('')}
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+          <label class="form-label">¿Algo más? Añade servicios que no estén en la lista</label>
+          <input type="text" class="form-input" id="f-custom-services" placeholder="Ej: Zona VIP exclusiva, App del evento, Merchandising...">
+          <div class="form-hint">Separa por comas si son varios</div>
         </div>
       </div>
 
@@ -861,14 +866,21 @@ function renderProposalDetail() {
             <div class="variant-tag">Opción ${i + 1}</div>
             ${p.selectedVariantId === v.id ? '<div style="position:absolute;top:16px;left:16px;color:var(--green);font-weight:700;">✓ Seleccionada</div>' : ''}
             <div class="variant-title">${v.title}</div>
-            <div class="variant-approach">${v.approach}</div>
+            ${v.tagline ? `<div style="font-size:13px;color:var(--red);font-style:italic;margin-bottom:12px;">${v.tagline}</div>` : ''}
+            <div class="variant-approach">${v.concept || v.approach || ''}</div>
             <div class="variant-total">${formatMoney(v.totalClient)} <small>para el cliente</small></div>
             <div class="variant-meta">
               <span>Coste: ${formatMoney(v.totalCost)}</span>
               <span>Margen: ${v.marginPercent || 0}%</span>
               <span>${(v.services || []).length} partidas</span>
+              ${(v.kpis || []).length > 0 ? `<span>${v.kpis.length} KPIs</span>` : ''}
             </div>
-            <div class="variant-services">
+            ${(v.kpis || []).length > 0 ? `
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">
+                ${v.kpis.map(k => `<span style="background:rgba(233,69,96,0.1);color:var(--red);padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;">${k.target} ${k.metric}</span>`).join('')}
+              </div>
+            ` : ''}
+            <div class="variant-services" style="margin-top:16px;">
               <table>
                 <thead><tr><th>Servicio</th><th style="text-align:right;">Cliente</th><th style="text-align:right;">Coste</th></tr></thead>
                 <tbody>
@@ -1039,6 +1051,17 @@ function bindEvents() {
     el.onclick = () => { state.view = el.dataset.view; render(); };
   });
 
+  // Service checkboxes (event delegation)
+  const svcBox = document.getElementById('services-checkboxes');
+  if (svcBox) {
+    svcBox.querySelectorAll('.checkbox-label').forEach(el => {
+      el.onclick = (e) => {
+        e.preventDefault();
+        el.classList.toggle('checked');
+      };
+    });
+  }
+
   // Client search
   const searchInput = document.getElementById('client-search');
   if (searchInput) {
@@ -1138,7 +1161,10 @@ async function createProposal() {
 
   // Gather services checked
   const services = [];
-  document.querySelectorAll('#services-checkboxes .checkbox-label.checked input').forEach(inp => services.push(inp.value));
+  document.querySelectorAll('#services-checkboxes .checkbox-label.checked').forEach(el => services.push(el.dataset.service));
+  // Add custom services
+  const customSvc = (document.getElementById('f-custom-services')?.value || '').split(',').map(s => s.trim()).filter(s => s);
+  services.push(...customSvc);
 
   const formData = {
     eventType: document.getElementById('f-event-type').value,

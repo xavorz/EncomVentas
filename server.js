@@ -534,24 +534,34 @@ route('GET', '/api/dashboard', async (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 async function callClaude(client, formData, feedback, previousVersions) {
-  const systemPrompt = `Eres un experto en diseño de propuestas comerciales para Encom, una empresa líder en gestión de eventos, festivales (OWN Valencia, Valencia Game City), activaciones de marca, patrocinios y experiencias digitales.
+  const systemPrompt = `Eres el director creativo y comercial de Encom, la empresa referente en España en gestión de eventos, festivales (OWN Valencia, Valencia Game City), activaciones de marca, patrocinios y experiencias digitales e inmersivas.
 
-Tu trabajo es generar exactamente 3 propuestas comerciales diferentes para un cliente basándote en el contexto proporcionado.
+Tu misión: crear 3 PROPUESTAS COMERCIALES QUE VENDAN. No estás haciendo un presupuesto — estás construyendo un pitch irresistible. El documento que generes irá directamente al cliente. Debe emocionar, convencer y cerrar.
 
 Cada propuesta debe variar en:
-- Nivel de precio y alcance (desde una opción más ajustada hasta una premium)
-- Enfoque creativo (diferentes conceptos y enfoques para resolver la necesidad del cliente)
+- Nivel de precio y ambición (desde una opción enfocada hasta una experiencia premium transformadora)
+- Concepto creativo diferente (cada una con su propia narrativa y ángulo estratégico)
 
-Para CADA propuesta debes devolver un JSON con esta estructura exacta:
+Para CADA propuesta debes devolver un JSON con esta estructura EXACTA:
 {
-  "id": "variant-1" (o 2, 3),
-  "title": "Nombre creativo de la propuesta",
-  "approach": "Descripción de 2-3 frases del enfoque creativo y diferencial",
-  "summary": "Resumen ejecutivo de 3-4 frases para presentar al cliente",
+  "id": "variant-1",
+  "title": "Nombre potente y creativo del proyecto (que suene a marca)",
+  "tagline": "Frase gancho de 1 línea que resuma la esencia (para la portada del PDF)",
+  "storytelling": "Narrativa de venta de 150-250 palabras. Escribe como si le contaras al cliente la visión del proyecto. Hazle imaginar el día del evento, el impacto, la emoción. Usa lenguaje visual y aspiracional. Esto es lo primero que leerá el cliente — debe engancharse aquí.",
+  "concept": "Descripción del concepto creativo en 80-120 palabras. ¿Qué hace único este enfoque? ¿Cuál es la idea central?",
+  "experience": "Descripción detallada de la experiencia en 100-150 palabras: qué vivirán los asistentes, paso a paso, desde que llegan hasta que se van. Hazlo tangible y sensorial.",
+  "kpis": [
+    {"metric": "Nombre del KPI", "target": "Valor objetivo", "description": "Cómo se mide y por qué importa"}
+  ],
+  "roi": "Texto de 60-100 palabras explicando el retorno esperado de la inversión para el cliente. Incluye estimaciones concretas (alcance, impacto en marca, leads, conversiones, etc.)",
+  "whyEncom": "Texto de 60-80 palabras sobre por qué Encom es el partner ideal para este proyecto (experiencia, casos, capacidades únicas)",
+  "timeline": [
+    {"phase": "Nombre de fase", "duration": "X semanas", "tasks": "Descripción de tareas clave"}
+  ],
   "services": [
     {
       "name": "Nombre del servicio/partida",
-      "description": "Descripción breve",
+      "description": "Descripción que aporte valor (no solo 'producción' sino qué incluye y por qué importa)",
       "quantity": 1,
       "unitPrice": 5000,
       "totalClient": 5000,
@@ -561,17 +571,21 @@ Para CADA propuesta debes devolver un JSON con esta estructura exacta:
   "totalClient": 15000,
   "totalCost": 9000,
   "margin": 6000,
-  "marginPercent": 40
+  "marginPercent": 40,
+  "summary": "Resumen ejecutivo de 3-4 frases impactantes para el inicio del documento"
 }
 
-REGLAS IMPORTANTES:
-- Los precios deben ser realistas para el mercado español de eventos
-- El margen objetivo debe estar entre 25-50% según el tipo de servicio
-- Incluye partidas detalladas (producción, logística, personal, tecnología, catering si aplica, etc.)
-- Los costes internos son una estimación realista de lo que le costaría a Encom ejecutar
-- Cada propuesta debe tener entre 5-12 partidas de servicios
-- Los precios al cliente siempre en euros, números enteros
-- Sé creativo en los nombres y enfoques, diferencia bien las 3 opciones
+REGLAS CRÍTICAS:
+- Estás VENDIENDO. Cada palabra debe acercar al cierre. Nada de texto genérico o corporativo vacío.
+- Precios realistas para el mercado español de eventos (investiga mentalmente rangos reales)
+- Margen objetivo 25-50% según servicio
+- Los KPIs deben ser concretos y medibles (no "mejorar la imagen de marca" sino "alcance estimado de 500K impactos en RRSS")
+- El ROI debe incluir números estimados que justifiquen la inversión
+- El timeline debe ser creíble y profesional
+- Entre 5-15 partidas de servicios por propuesta, bien detalladas
+- La primera propuesta debe ser la más ajustada, la tercera la más premium
+- El storytelling es LO MÁS IMPORTANTE. Si el cliente no se emociona en los primeros párrafos, no sigue leyendo.
+- Escribe en español natural y persuasivo, no en "lenguaje de consultoría"
 
 Responde SOLO con un JSON array de 3 objetos. Sin texto adicional, sin markdown, solo JSON válido.`;
 
@@ -616,7 +630,7 @@ ${formData.freeContext || 'Sin contexto adicional'}`;
 
   const requestBody = JSON.stringify({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
+    max_tokens: 16000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }]
   });
@@ -702,134 +716,258 @@ route('GET', '/api/proposals/:id/pdf', async (req, res, params) => {
 function generatePDFHTML(client, proposal, variant) {
   const fd = proposal.formData;
   const today = new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  const ref = proposal.id.slice(0, 8).toUpperCase();
 
   const servicesRows = variant.services.map(s => `
     <tr>
-      <td style="padding:12px 16px;border-bottom:1px solid #eee;font-weight:500;">${s.name}</td>
-      <td style="padding:12px 16px;border-bottom:1px solid #eee;color:#555;">${s.description}</td>
-      <td style="padding:12px 16px;border-bottom:1px solid #eee;text-align:center;">${s.quantity}</td>
-      <td style="padding:12px 16px;border-bottom:1px solid #eee;text-align:right;">${(s.unitPrice || 0).toLocaleString('es-ES')} &euro;</td>
-      <td style="padding:12px 16px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${(s.totalClient || 0).toLocaleString('es-ES')} &euro;</td>
+      <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;"><strong style="color:#1a1a2e;">${s.name}</strong><br><span style="font-size:12px;color:#888;">${s.description || ''}</span></td>
+      <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;text-align:center;color:#555;">${s.quantity}</td>
+      <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;">${(s.totalClient || 0).toLocaleString('es-ES')} &euro;</td>
     </tr>
+  `).join('');
+
+  const kpisHTML = (variant.kpis || []).map(k => `
+    <div style="background:#f8f9fb;border-radius:10px;padding:20px;text-align:center;">
+      <div style="font-size:24px;font-weight:800;color:#e94560;">${k.target}</div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-top:4px;">${k.metric}</div>
+      <div style="font-size:11px;color:#888;margin-top:4px;">${k.description || ''}</div>
+    </div>
+  `).join('');
+
+  const timelineHTML = (variant.timeline || []).map((t, i) => `
+    <div style="display:flex;gap:16px;margin-bottom:16px;">
+      <div style="width:40px;height:40px;background:${i === 0 ? '#e94560' : '#1a1a2e'};border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0;">${i + 1}</div>
+      <div style="flex:1;padding-top:4px;">
+        <strong style="font-size:15px;color:#1a1a2e;">${t.phase}</strong>
+        <span style="font-size:12px;color:#e94560;margin-left:8px;">${t.duration}</span>
+        <div style="font-size:13px;color:#666;margin-top:4px;line-height:1.5;">${t.tasks}</div>
+      </div>
+    </div>
   `).join('');
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Propuesta Comercial - ${client.company || 'Cliente'}</title>
+<title>Propuesta Comercial - ${variant.title} - ${client.company || 'Cliente'}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', sans-serif; color: #1a1a2e; background: #fff; }
-  .page { max-width: 800px; margin: 0 auto; padding: 40px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 48px; padding-bottom: 24px; border-bottom: 3px solid #e94560; }
-  .logo { font-size: 28px; font-weight: 700; color: #1a1a2e; }
-  .logo span { color: #e94560; }
-  .date { color: #888; font-size: 13px; text-align: right; }
-  .ref { font-size: 12px; color: #aaa; margin-top: 4px; }
-  h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; }
-  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 16px; color: #e94560; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-  .subtitle { font-size: 16px; color: #555; margin-bottom: 32px; }
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px; }
-  .info-item { background: #f8f9fa; padding: 16px; border-radius: 8px; }
-  .info-label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: 600; letter-spacing: 0.5px; }
-  .info-value { font-size: 15px; margin-top: 4px; font-weight: 500; }
-  .summary { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 24px; border-radius: 12px; margin: 24px 0; }
-  .summary p { font-size: 15px; line-height: 1.7; opacity: 0.9; }
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-  thead th { background: #1a1a2e; color: #fff; padding: 12px 16px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-  thead th:first-child { border-radius: 8px 0 0 0; }
-  thead th:last-child { border-radius: 0 8px 0 0; }
-  .total-row { background: #f8f9fa; }
-  .total-row td { padding: 16px; font-size: 18px; font-weight: 700; }
-  .footer { margin-top: 48px; padding-top: 24px; border-top: 2px solid #eee; text-align: center; color: #888; font-size: 12px; }
-  @media print { .page { padding: 20px; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',sans-serif; color:#1a1a2e; background:#fff; font-size:14px; line-height:1.6; }
+  .page { max-width:820px; margin:0 auto; }
+
+  /* ─ Cover ─ */
+  .cover { min-height:100vh; background:linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%); color:#fff; display:flex; flex-direction:column; justify-content:center; padding:80px 60px; position:relative; overflow:hidden; page-break-after:always; }
+  .cover::before { content:''; position:absolute; top:-100px; right:-100px; width:500px; height:500px; background:radial-gradient(circle, rgba(233,69,96,0.15) 0%, transparent 70%); border-radius:50%; }
+  .cover::after { content:''; position:absolute; bottom:-50px; left:-50px; width:300px; height:300px; background:radial-gradient(circle, rgba(233,69,96,0.1) 0%, transparent 70%); border-radius:50%; }
+  .cover-logo { font-size:20px; font-weight:700; letter-spacing:1px; opacity:0.7; position:relative; z-index:1; }
+  .cover-logo span { color:#e94560; }
+  .cover-title { font-size:42px; font-weight:900; line-height:1.1; margin-top:60px; position:relative; z-index:1; }
+  .cover-tagline { font-size:18px; font-weight:300; opacity:0.8; margin-top:16px; position:relative; z-index:1; line-height:1.5; }
+  .cover-client { margin-top:60px; position:relative; z-index:1; }
+  .cover-client-label { font-size:11px; text-transform:uppercase; letter-spacing:2px; opacity:0.5; }
+  .cover-client-name { font-size:24px; font-weight:700; margin-top:4px; }
+  .cover-meta { position:absolute; bottom:40px; right:60px; text-align:right; font-size:12px; opacity:0.5; z-index:1; }
+  .cover-accent { width:60px; height:4px; background:#e94560; border-radius:2px; margin-top:24px; position:relative; z-index:1; }
+
+  /* ─ Content pages ─ */
+  .content { padding:60px; }
+  .section { margin-bottom:48px; page-break-inside:avoid; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:3px; color:#e94560; font-weight:700; margin-bottom:8px; }
+  h3 { font-size:24px; font-weight:800; color:#1a1a2e; margin-bottom:20px; line-height:1.3; }
+  .lead-text { font-size:16px; line-height:1.8; color:#444; }
+  .divider { width:40px; height:3px; background:#e94560; border-radius:2px; margin:32px 0; }
+
+  /* ─ Storytelling block ─ */
+  .story-block { background:linear-gradient(135deg, #fafbfc 0%, #f5f6f8 100%); border-left:4px solid #e94560; padding:32px; border-radius:0 12px 12px 0; margin:24px 0; }
+  .story-block p { font-size:15px; line-height:1.9; color:#333; }
+
+  /* ─ KPIs grid ─ */
+  .kpis-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:16px; margin:20px 0; }
+
+  /* ─ Experience ─ */
+  .experience-block { background:#1a1a2e; color:#fff; padding:40px; border-radius:16px; margin:20px 0; }
+  .experience-block p { font-size:15px; line-height:1.8; opacity:0.9; }
+
+  /* ─ ROI ─ */
+  .roi-block { background:linear-gradient(135deg, #e94560 0%, #c23152 100%); color:#fff; padding:32px; border-radius:12px; margin:20px 0; }
+  .roi-block p { font-size:15px; line-height:1.8; }
+
+  /* ─ Table ─ */
+  table { width:100%; border-collapse:collapse; margin:20px 0; }
+  thead th { background:#1a1a2e; color:#fff; padding:14px 20px; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:600; }
+  thead th:first-child { border-radius:10px 0 0 0; }
+  thead th:last-child { border-radius:0 10px 0 0; }
+  .total-row td { padding:20px; font-size:20px; font-weight:800; background:#f8f9fb; }
+
+  /* ─ Why Encom ─ */
+  .why-block { display:flex; gap:20px; align-items:flex-start; margin:20px 0; padding:24px; background:#f8f9fb; border-radius:12px; }
+  .why-icon { width:48px; height:48px; background:#e94560; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:24px; flex-shrink:0; }
+  .why-text { font-size:14px; line-height:1.7; color:#444; }
+
+  /* ─ Footer ─ */
+  .page-footer { text-align:center; padding:32px 0; border-top:2px solid #f0f0f0; margin-top:48px; }
+  .page-footer strong { color:#1a1a2e; }
+
+  /* ─ Conditions ─ */
+  .conditions { font-size:12px; color:#888; line-height:1.8; padding:20px; background:#fafbfc; border-radius:8px; }
+
+  /* ─ CTA ─ */
+  .cta-block { text-align:center; padding:48px 40px; background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color:#fff; border-radius:16px; margin:32px 0; }
+  .cta-block h3 { color:#fff; font-size:22px; }
+  .cta-block p { opacity:0.8; margin-top:12px; font-size:15px; }
+
+  @media print {
+    .cover { min-height:auto; padding:60px 40px; }
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
 </style>
 </head>
 <body>
+
+<!-- ═══ COVER PAGE ═══ -->
 <div class="page">
-  <div class="header">
-    <div>
-      <div class="logo">Encom<span>.</span></div>
-      <div style="font-size:12px;color:#888;margin-top:4px;">Experiencias que transforman</div>
+  <div class="cover">
+    <div class="cover-logo">ENCOM<span>.</span></div>
+    <div class="cover-accent"></div>
+    <div class="cover-title">${variant.title}</div>
+    <div class="cover-tagline">${variant.tagline || variant.summary || ''}</div>
+    <div class="cover-client">
+      <div class="cover-client-label">Propuesta exclusiva para</div>
+      <div class="cover-client-name">${client.company || 'Cliente'}</div>
     </div>
-    <div class="date">
-      ${today}
-      <div class="ref">Ref: ${proposal.id.slice(0, 8).toUpperCase()}</div>
-    </div>
+    <div class="cover-meta">${today}<br>Ref: ${ref}</div>
   </div>
 
-  <h1>${variant.title}</h1>
-  <div class="subtitle">Propuesta comercial para ${client.company || 'Cliente'}</div>
+  <!-- ═══ CONTENT ═══ -->
+  <div class="content">
 
-  <div class="info-grid">
-    <div class="info-item">
-      <div class="info-label">Cliente</div>
-      <div class="info-value">${client.company || '-'}</div>
+    <!-- Executive Summary -->
+    <div class="section">
+      <h2>Resumen ejecutivo</h2>
+      <h3>${variant.title}</h3>
+      <div class="story-block">
+        <p>${variant.storytelling || variant.summary || ''}</p>
+      </div>
     </div>
-    <div class="info-item">
-      <div class="info-label">Contacto</div>
-      <div class="info-value">${client.contactName || '-'}</div>
-    </div>
-    <div class="info-item">
-      <div class="info-label">Evento</div>
-      <div class="info-value">${fd.eventName || '-'}</div>
-    </div>
-    <div class="info-item">
-      <div class="info-label">Fecha</div>
-      <div class="info-value">${fd.eventDate || 'Por determinar'}</div>
-    </div>
-    <div class="info-item">
-      <div class="info-label">Ubicaci&oacute;n</div>
-      <div class="info-value">${fd.location || 'Por determinar'}</div>
-    </div>
-    <div class="info-item">
-      <div class="info-label">Asistentes estimados</div>
-      <div class="info-value">${fd.attendees || 'Por determinar'}</div>
-    </div>
-  </div>
 
-  <h2>Nuestra propuesta</h2>
-  <div class="summary">
-    <p>${variant.summary || variant.approach}</p>
-  </div>
+    <!-- The Concept -->
+    ${variant.concept ? `
+    <div class="section">
+      <h2>El concepto</h2>
+      <h3>Una experiencia que marca la diferencia</h3>
+      <p class="lead-text">${variant.concept}</p>
+    </div>
+    ` : ''}
 
-  <h2>Desglose de servicios</h2>
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Servicio</th>
-        <th style="text-align:left;">Descripci&oacute;n</th>
-        <th style="text-align:center;">Uds.</th>
-        <th style="text-align:right;">Precio ud.</th>
-        <th style="text-align:right;">Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${servicesRows}
-    </tbody>
-    <tfoot>
-      <tr class="total-row">
-        <td colspan="4" style="text-align:right;padding-right:16px;">TOTAL PRESUPUESTO</td>
-        <td style="text-align:right;color:#e94560;">${(variant.totalClient || 0).toLocaleString('es-ES')} &euro;</td>
-      </tr>
-    </tfoot>
-  </table>
+    <!-- The Experience -->
+    ${variant.experience ? `
+    <div class="section">
+      <h2>La experiencia</h2>
+      <h3>Lo que vivir&aacute;n los asistentes</h3>
+      <div class="experience-block">
+        <p>${variant.experience}</p>
+      </div>
+    </div>
+    ` : ''}
 
-  ${fd.objectives ? `<h2>Objetivos</h2><p style="line-height:1.7;color:#444;">${fd.objectives}</p>` : ''}
+    <!-- KPIs -->
+    ${(variant.kpis || []).length > 0 ? `
+    <div class="section">
+      <h2>Impacto esperado</h2>
+      <h3>KPIs y m&eacute;tricas de &eacute;xito</h3>
+      <div class="kpis-grid">
+        ${kpisHTML}
+      </div>
+    </div>
+    ` : ''}
 
-  <h2>Condiciones</h2>
-  <p style="line-height:1.7;color:#444;">
-    &bull; Presupuesto v&aacute;lido durante 30 d&iacute;as desde la fecha de emisi&oacute;n.<br>
-    &bull; Precios expresados en euros, IVA no incluido.<br>
-    &bull; Pago: 50% a la confirmaci&oacute;n, 50% a la finalizaci&oacute;n del evento.<br>
-    &bull; Cualquier modificaci&oacute;n sobre el alcance descrito ser&aacute; presupuestada por separado.
-  </p>
+    <!-- ROI -->
+    ${variant.roi ? `
+    <div class="section">
+      <h2>Retorno de la inversi&oacute;n</h2>
+      <h3>Por qu&eacute; esta inversi&oacute;n vale la pena</h3>
+      <div class="roi-block">
+        <p>${variant.roi}</p>
+      </div>
+    </div>
+    ` : ''}
 
-  <div class="footer">
-    <strong>Encom</strong> &mdash; OWN Valencia &middot; Valencia Game City<br>
-    contacto@encom.es &bull; encom.es
+    <!-- Services Breakdown -->
+    <div class="section">
+      <h2>Inversi&oacute;n detallada</h2>
+      <h3>Desglose de servicios</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left;">Servicio</th>
+            <th style="text-align:center;width:80px;">Uds.</th>
+            <th style="text-align:right;width:120px;">Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${servicesRows}
+        </tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td colspan="2" style="text-align:right;padding-right:20px;">INVERSI&Oacute;N TOTAL</td>
+            <td style="text-align:right;color:#e94560;">${(variant.totalClient || 0).toLocaleString('es-ES')} &euro;</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div style="font-size:11px;color:#aaa;margin-top:8px;text-align:right;">* IVA no incluido</div>
+    </div>
+
+    <!-- Timeline -->
+    ${(variant.timeline || []).length > 0 ? `
+    <div class="section">
+      <h2>Plan de ejecuci&oacute;n</h2>
+      <h3>Timeline del proyecto</h3>
+      ${timelineHTML}
+    </div>
+    ` : ''}
+
+    <!-- Why Encom -->
+    ${variant.whyEncom ? `
+    <div class="section">
+      <h2>Sobre Encom</h2>
+      <h3>Por qu&eacute; somos tu partner ideal</h3>
+      <div class="why-block">
+        <div class="why-icon">E</div>
+        <div class="why-text">${variant.whyEncom}</div>
+      </div>
+    </div>
+    ` : ''}
+
+    <!-- Project Info Grid -->
+    <div class="section">
+      <h2>Datos del proyecto</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#f8f9fb;padding:16px;border-radius:8px;"><div style="font-size:10px;text-transform:uppercase;color:#888;letter-spacing:1px;">Cliente</div><div style="font-weight:600;margin-top:4px;">${client.company || '-'}</div></div>
+        <div style="background:#f8f9fb;padding:16px;border-radius:8px;"><div style="font-size:10px;text-transform:uppercase;color:#888;letter-spacing:1px;">Contacto</div><div style="font-weight:600;margin-top:4px;">${client.contactName || '-'}</div></div>
+        <div style="background:#f8f9fb;padding:16px;border-radius:8px;"><div style="font-size:10px;text-transform:uppercase;color:#888;letter-spacing:1px;">Fecha prevista</div><div style="font-weight:600;margin-top:4px;">${fd.eventDate || 'Por determinar'}</div></div>
+        <div style="background:#f8f9fb;padding:16px;border-radius:8px;"><div style="font-size:10px;text-transform:uppercase;color:#888;letter-spacing:1px;">Ubicaci&oacute;n</div><div style="font-weight:600;margin-top:4px;">${fd.location || 'Por determinar'}</div></div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-block">
+      <h3>Hagamos que suceda</h3>
+      <p>Estamos listos para convertir esta visi&oacute;n en realidad.<br>Contacta con nosotros para dar el siguiente paso.</p>
+      <div style="margin-top:20px;font-size:13px;opacity:0.6;">contacto@encom.es &middot; encom.es</div>
+    </div>
+
+    <!-- Conditions -->
+    <div class="section">
+      <div class="conditions">
+        <strong>Condiciones generales:</strong> Propuesta v&aacute;lida 30 d&iacute;as desde su emisi&oacute;n. Precios en euros, IVA no incluido. Forma de pago: 50% a la confirmaci&oacute;n, 50% a la finalizaci&oacute;n. Cualquier modificaci&oacute;n sobre el alcance descrito se presupuestar&aacute; por separado. Esta propuesta es confidencial y ha sido elaborada exclusivamente para ${client.company || 'el cliente'}.
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <strong>ENCOM</strong> &mdash; OWN Valencia &middot; Valencia Game City<br>
+      <span style="font-size:12px;color:#aaa;">Experiencias que transforman</span>
+    </div>
   </div>
 </div>
 </body>
