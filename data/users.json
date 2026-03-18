@@ -1,0 +1,26 @@
+[
+  {
+    "id": "b445fc2b-571d-43b6-8fab-0bbf8f68e5ff",
+    "name": "Javi",
+    "email": "javier@encom.es",
+    "passwordHash": "0e89f223e226ae63268cf39152ab75722e811b89d29efb22a852f1667bd22ae0",
+    "role": "admin",
+    "createdAt": "2026-03-18T22:57:59.587Z"
+  },
+  {
+    "id": "7722bfb3-d811-420a-8471-336f67638f59",
+    "name": "Laura Martínez",
+    "email": "laura@encom.es",
+    "passwordHash": "29aa4e58e9c48819e4d076688302a35140aad0f0104e2be10e5e5ccad822d26a",
+    "role": "vendedor",
+    "createdAt": "2026-03-18T22:57:59.587Z"
+  },
+  {
+    "id": "c761b503-0a13-4f04-861f-77fc28554478",
+    "name": "Carlos Ruiz",
+    "email": "carlos@encom.es",
+    "passwordHash": "29aa4e58e9c48819e4d076688302a35140aad0f0104e2be10e5e5ccad822d26a",
+    "role": "vendedor",
+    "createdAt": "2026-03-18T22:57:59.587Z"
+  }
+]
