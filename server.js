@@ -560,8 +560,11 @@ Para CADA propuesta debes devolver un JSON con esta estructura EXACTA:
   ],
   "services": [
     {
-      "name": "Nombre del servicio/partida",
-      "description": "Descripción que aporte valor (no solo 'producción' sino qué incluye y por qué importa)",
+      "name": "Nombre potente de la activación o servicio (que suene a experiencia, no a partida contable)",
+      "headline": "Frase gancho de 1 línea que resuma qué es y por qué importa",
+      "fullDescription": "Descripción comercial de 80-120 palabras. Explica en qué consiste esta activación: qué vivirá el asistente o el cliente, cómo funciona, qué la hace especial. Vende la experiencia, no el servicio técnico. Si es un stand, describe la experiencia inmersiva. Si es producción, describe el impacto visual que tendrá.",
+      "objectives": ["Objetivo 1 concreto de esta activación", "Objetivo 2", "Objetivo 3"],
+      "includes": ["Qué incluye: elemento 1", "Elemento 2", "Elemento 3 (sé específico: 2 pantallas LED 4K, no solo pantallas)"],
       "quantity": 1,
       "unitPrice": 5000,
       "totalClient": 5000,
@@ -582,10 +585,12 @@ REGLAS CRÍTICAS:
 - Los KPIs deben ser concretos y medibles (no "mejorar la imagen de marca" sino "alcance estimado de 500K impactos en RRSS")
 - El ROI debe incluir números estimados que justifiquen la inversión
 - El timeline debe ser creíble y profesional
-- Entre 5-15 partidas de servicios por propuesta, bien detalladas
+- Entre 5-10 servicios/activaciones por propuesta. Cada uno es una SECCIÓN PROPIA en el PDF final.
+- CADA SERVICIO/ACTIVACIÓN debe tener fullDescription (80-120 palabras), objectives (3 concretos) e includes (3-5 elementos específicos). No escatimes aquí: el cliente leerá cada activación como si fuera un mini-proyecto. Debe entender qué es, por qué importa y qué incluye exactamente.
 - La primera propuesta debe ser la más ajustada, la tercera la más premium
 - El storytelling es LO MÁS IMPORTANTE. Si el cliente no se emociona en los primeros párrafos, no sigue leyendo.
 - Escribe en español natural y persuasivo, no en "lenguaje de consultoría"
+- Los nombres de servicios deben sonar a EXPERIENCIA, no a partida presupuestaria. No "Sonido e iluminación" sino "Escenario Inmersivo 360° con Mapping Audiovisual"
 
 Responde SOLO con un JSON array de 3 objetos. Sin texto adicional, sin markdown, solo JSON válido.`;
 
@@ -720,10 +725,40 @@ function generatePDFHTML(client, proposal, variant) {
 
   const servicesRows = variant.services.map(s => `
     <tr>
-      <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;"><strong style="color:#1a1a2e;">${s.name}</strong><br><span style="font-size:12px;color:#888;">${s.description || ''}</span></td>
+      <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;"><strong style="color:#1a1a2e;">${s.name}</strong></td>
       <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;text-align:center;color:#555;">${s.quantity}</td>
       <td style="padding:14px 20px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;">${(s.totalClient || 0).toLocaleString('es-ES')} &euro;</td>
     </tr>
+  `).join('');
+
+  const serviceBlocksHTML = variant.services.map((s, i) => `
+    <div style="page-break-inside:avoid;margin-bottom:40px;${i > 0 ? 'padding-top:20px;border-top:1px solid #eee;' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#e94560;font-weight:700;">Activaci&oacute;n ${String(i + 1).padStart(2, '0')}</div>
+          <h4 style="font-size:20px;font-weight:800;color:#1a1a2e;margin-top:4px;line-height:1.3;">${s.name}</h4>
+          ${s.headline ? `<div style="font-size:14px;color:#666;font-style:italic;margin-top:4px;">${s.headline}</div>` : ''}
+        </div>
+        <div style="background:#1a1a2e;color:#fff;padding:8px 16px;border-radius:8px;font-size:16px;font-weight:700;flex-shrink:0;margin-left:16px;">
+          ${(s.totalClient || 0).toLocaleString('es-ES')} &euro;
+        </div>
+      </div>
+      ${s.fullDescription ? `<p style="font-size:14px;line-height:1.8;color:#444;margin-bottom:16px;">${s.fullDescription}</p>` : (s.description ? `<p style="font-size:14px;line-height:1.8;color:#444;margin-bottom:16px;">${s.description}</p>` : '')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        ${(s.objectives && s.objectives.length > 0) ? `
+          <div style="background:#f8f9fb;padding:16px;border-radius:10px;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#e94560;font-weight:700;margin-bottom:10px;">Objetivos</div>
+            ${s.objectives.map(o => `<div style="font-size:13px;color:#444;padding:4px 0;padding-left:16px;position:relative;"><span style="position:absolute;left:0;color:#e94560;">&#9654;</span> ${o}</div>`).join('')}
+          </div>
+        ` : ''}
+        ${(s.includes && s.includes.length > 0) ? `
+          <div style="background:#f8f9fb;padding:16px;border-radius:10px;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#1a1a2e;font-weight:700;margin-bottom:10px;">Incluye</div>
+            ${s.includes.map(inc => `<div style="font-size:13px;color:#444;padding:4px 0;padding-left:16px;position:relative;"><span style="position:absolute;left:0;color:#2ecc71;">&#10003;</span> ${inc}</div>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    </div>
   `).join('');
 
   const kpisHTML = (variant.kpis || []).map(k => `
@@ -893,14 +928,21 @@ function generatePDFHTML(client, proposal, variant) {
     </div>
     ` : ''}
 
-    <!-- Services Breakdown -->
+    <!-- Services Detail Blocks -->
     <div class="section">
-      <h2>Inversi&oacute;n detallada</h2>
-      <h3>Desglose de servicios</h3>
+      <h2>Qu&eacute; incluye esta propuesta</h2>
+      <h3>Activaciones y servicios en detalle</h3>
+      ${serviceBlocksHTML}
+    </div>
+
+    <!-- Investment Summary Table -->
+    <div class="section" style="page-break-inside:avoid;">
+      <h2>Resumen de inversi&oacute;n</h2>
+      <h3>Cuadro econ&oacute;mico</h3>
       <table>
         <thead>
           <tr>
-            <th style="text-align:left;">Servicio</th>
+            <th style="text-align:left;">Concepto</th>
             <th style="text-align:center;width:80px;">Uds.</th>
             <th style="text-align:right;width:120px;">Importe</th>
           </tr>

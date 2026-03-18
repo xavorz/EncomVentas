@@ -882,11 +882,14 @@ function renderProposalDetail() {
             ` : ''}
             <div class="variant-services" style="margin-top:16px;">
               <table>
-                <thead><tr><th>Servicio</th><th style="text-align:right;">Cliente</th><th style="text-align:right;">Coste</th></tr></thead>
+                <thead><tr><th>Activación</th><th style="text-align:right;">Cliente</th><th style="text-align:right;">Coste</th></tr></thead>
                 <tbody>
                   ${(v.services || []).map(s => `
                     <tr>
-                      <td>${s.name}</td>
+                      <td>
+                        <div style="font-weight:600;">${s.name}</div>
+                        ${s.headline ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">${s.headline}</div>` : ''}
+                      </td>
                       <td style="text-align:right;">${formatMoney(s.totalClient)}</td>
                       <td style="text-align:right;color:var(--text3);">${formatMoney(s.costInternal)}</td>
                     </tr>
