@@ -231,15 +231,11 @@ let state = {
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
-  try {
-    const r = await fetch(API + path, { ...opts, headers });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Error desconocido');
-    return data;
-  } catch (e) {
-    if (e.message === 'No autorizado') { logout(); }
-    throw e;
-  }
+  const r = await fetch(API + path, { ...opts, headers });
+  let data;
+  try { data = await r.json(); } catch { throw new Error(`Error del servidor (${r.status})`); }
+  if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
+  return data;
 }
 
 // ─── Auth ───────────────────────────────────────────────
@@ -248,12 +244,15 @@ async function login(email, password) {
   state.token = data.token;
   state.user = data.user;
   localStorage.setItem('ev_token', data.token);
-  await loadData();
+  // Load data but don't let failures block login
+  try { await loadData(); } catch (e) { console.warn('loadData parcial:', e.message); }
   render();
 }
 
 function logout() {
-  api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  if (state.token) {
+    fetch(API + '/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + state.token, 'Content-Type': 'application/json' } }).catch(() => {});
+  }
   state.token = null;
   state.user = null;
   localStorage.removeItem('ev_token');
@@ -264,17 +263,22 @@ async function checkAuth() {
   if (!state.token) return;
   try {
     state.user = await api('/api/auth/me');
-    await loadData();
-  } catch { state.token = null; state.user = null; localStorage.removeItem('ev_token'); }
+    try { await loadData(); } catch (e) { console.warn('loadData parcial:', e.message); }
+  } catch {
+    state.token = null;
+    state.user = null;
+    localStorage.removeItem('ev_token');
+  }
 }
 
 async function loadData() {
-  try {
-    state.proposals = await api('/api/proposals');
-    state.clients = await api('/api/clients');
-    state.notifications = await api('/api/notifications');
-    if (state.user.role === 'admin') state.dashboard = await api('/api/dashboard');
-  } catch (e) { console.error(e); }
+  // Load each independently so one failure doesn't break all
+  try { state.proposals = await api('/api/proposals'); } catch (e) { console.warn('proposals:', e.message); state.proposals = []; }
+  try { state.clients = await api('/api/clients'); } catch (e) { console.warn('clients:', e.message); state.clients = []; }
+  try { state.notifications = await api('/api/notifications'); } catch (e) { console.warn('notifications:', e.message); state.notifications = []; }
+  if (state.user && state.user.role === 'admin') {
+    try { state.dashboard = await api('/api/dashboard'); } catch (e) { console.warn('dashboard:', e.message); state.dashboard = null; }
+  }
 }
 
 // ─── Status helpers ─────────────────────────────────────
@@ -1002,10 +1006,22 @@ function bindEvents() {
   if (loginForm) {
     loginForm.onsubmit = async (e) => {
       e.preventDefault();
+      const errDiv = document.getElementById('login-error');
+      const btn = loginForm.querySelector('button[type="submit"]');
       const email = document.getElementById('login-email').value;
       const pass = document.getElementById('login-pass').value;
-      try { await login(email, pass); }
-      catch (err) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${err.message}</div>`; }
+      errDiv.innerHTML = '';
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+      try {
+        await login(email, pass);
+      } catch (err) {
+        // Re-render might have happened, get fresh reference
+        const freshErr = document.getElementById('login-error');
+        if (freshErr) freshErr.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+        const freshBtn = document.querySelector('#login-form button[type="submit"]');
+        if (freshBtn) { freshBtn.disabled = false; freshBtn.textContent = 'Iniciar sesión'; }
+      }
     };
     return;
   }

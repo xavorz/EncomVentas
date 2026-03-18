@@ -109,6 +109,20 @@ const routes = [];
 function route(method, pattern, handler) { routes.push({ method, pattern, handler }); }
 
 // ════════════════════════════════════════════════════════════
+// HEALTH CHECK (no auth required)
+// ════════════════════════════════════════════════════════════
+route('GET', '/api/health', async (req, res) => {
+  const users = readJSON('users.json');
+  json(res, {
+    status: 'ok',
+    usersCount: users.length,
+    userEmails: users.map(u => u.email),
+    hasApiKey: !!ANTHROPIC_API_KEY,
+    dataFiles: fs.readdirSync(DATA_DIR),
+  });
+});
+
+// ════════════════════════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════════════════════════
 route('POST', '/api/auth/login', async (req, res) => {
