@@ -202,6 +202,32 @@ tr:hover td { background:rgba(255,255,255,0.02); }
 .bar-track { flex:1; height:28px; background:var(--bg); border-radius:6px; overflow:hidden; position:relative; }
 .bar-fill { height:100%; border-radius:6px; transition:width .5s ease; display:flex; align-items:center; padding:0 10px; font-size:11px; font-weight:600; color:#fff; min-width:40px; }
 .bar-value { margin-left:12px; font-size:13px; font-weight:600; width:60px; text-align:right; flex-shrink:0; }
+
+/* ─── Olympic Medal Board ─── */
+.medal-board { width:100%; }
+.medal-podium { display:flex; align-items:flex-end; justify-content:center; gap:8px; margin-bottom:28px; padding:0 16px; }
+.podium-slot { display:flex; flex-direction:column; align-items:center; transition:all .3s; }
+.podium-avatar { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; color:#fff; margin-bottom:8px; border:3px solid var(--border); }
+.podium-slot:nth-child(1) .podium-avatar { width:56px; height:56px; font-size:22px; }
+.podium-name { font-size:12px; font-weight:600; color:var(--text); margin-bottom:6px; text-align:center; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.podium-block { width:90px; border-radius:8px 8px 0 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:12px; font-weight:800; font-size:20px; color:#fff; position:relative; }
+.podium-slot:nth-child(1) .podium-block { width:100px; }
+.podium-label { font-size:9px; text-transform:uppercase; letter-spacing:1.5px; opacity:0.8; margin-top:2px; }
+
+.medal-table { width:100%; border-collapse:collapse; }
+.medal-table th { text-align:center; padding:8px 6px; font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--text3); font-weight:600; border-bottom:1px solid var(--border); }
+.medal-table th:first-child, .medal-table td:first-child { text-align:center; width:36px; }
+.medal-table th:nth-child(2), .medal-table td:nth-child(2) { text-align:left; }
+.medal-table td { padding:10px 6px; border-bottom:1px solid var(--border); text-align:center; font-size:13px; }
+.medal-table tr:hover td { background:rgba(255,255,255,0.02); }
+.medal-count { display:inline-flex; align-items:center; justify-content:center; gap:4px; font-weight:700; font-size:14px; }
+.medal-gold { color:#FFD700; }
+.medal-silver { color:#C0C0C0; }
+.medal-bronze { color:#CD7F32; }
+.rank-number { font-weight:800; font-size:15px; color:var(--text2); }
+.rank-1 { color:#FFD700; font-size:18px; }
+.rank-2 { color:#C0C0C0; font-size:16px; }
+.rank-3 { color:#CD7F32; }
 </style>
 </head>
 <body>
@@ -434,6 +460,99 @@ function renderAdminDashboard() {
   ` : '';
 
   const maxRevenue = Math.max(...d.vendedorStats.map(v => v.revenue), 1);
+  const ranking = d.medalRanking || [];
+
+  // Build podium (top 3)
+  const podiumColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+  const podiumHeights = [120, 90, 70];
+  const podiumEmojis = ['🥇', '🥈', '🥉'];
+  const avatarBgs = ['#B8860B', '#808080', '#8B4513'];
+
+  // Reorder for display: 2nd, 1st, 3rd
+  const podiumOrder = ranking.length >= 3
+    ? [ranking[1], ranking[0], ranking[2]]
+    : ranking.length === 2
+    ? [null, ranking[0], ranking[1]]
+    : ranking.length === 1
+    ? [null, ranking[0], null]
+    : [];
+  const podiumHeightsOrder = ranking.length >= 3
+    ? [podiumHeights[1], podiumHeights[0], podiumHeights[2]]
+    : ranking.length === 2
+    ? [0, podiumHeights[0], podiumHeights[1]]
+    : ranking.length === 1
+    ? [0, podiumHeights[0], 0]
+    : [];
+  const podiumColorsOrder = ranking.length >= 3
+    ? [podiumColors[1], podiumColors[0], podiumColors[2]]
+    : ranking.length === 2
+    ? ['', podiumColors[0], podiumColors[1]]
+    : ranking.length === 1
+    ? ['', podiumColors[0], '']
+    : [];
+  const podiumRanks = ranking.length >= 3
+    ? [2, 1, 3]
+    : ranking.length === 2
+    ? [0, 1, 2]
+    : [0, 1, 0];
+
+  const podiumHTML = podiumOrder.length > 0 ? `
+    <div class="medal-podium">
+      ${podiumOrder.map((v, i) => {
+        if (!v) return '';
+        const rank = podiumRanks[i];
+        const initial = v.name.charAt(0).toUpperCase();
+        return `
+          <div class="podium-slot">
+            <div class="podium-avatar" style="background:${avatarBgs[rank-1]};border-color:${podiumColorsOrder[i]};">${initial}</div>
+            <div class="podium-name">${v.name}</div>
+            <div class="podium-block" style="height:${podiumHeightsOrder[i]}px;background:linear-gradient(180deg, ${podiumColorsOrder[i]}33 0%, ${podiumColorsOrder[i]}11 100%);border:1px solid ${podiumColorsOrder[i]}55;">
+              <span style="color:${podiumColorsOrder[i]};font-size:28px;">${podiumEmojis[rank-1]}</span>
+              <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;justify-content:center;">
+                <span class="medal-count medal-gold" title="Aprobadas">🥇 ${v.approved}</span>
+                <span class="medal-count medal-silver" title="Enviadas">🥈 ${v.sent}</span>
+                <span class="medal-count medal-bronze" title="Creadas">🥉 ${v.total}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  // Full medal table
+  const medalTableHTML = ranking.length > 0 ? `
+    <table class="medal-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Vendedor</th>
+          <th>🥇 Aprobadas</th>
+          <th>🥈 Enviadas</th>
+          <th>🥉 Creadas</th>
+          <th>💰 Facturación</th>
+          <th>📊 Conversión</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ranking.map((v, i) => {
+          const rankClass = i < 3 ? 'rank-' + (i + 1) : '';
+          const rankDisplay = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+          return `
+            <tr>
+              <td><span class="rank-number ${rankClass}">${rankDisplay}</span></td>
+              <td style="text-align:left;font-weight:600;">${v.name}${v.role === 'admin' ? ' <span style="font-size:10px;color:var(--purple);font-weight:400;">admin</span>' : ''}</td>
+              <td><span class="medal-count medal-gold">${v.approved}</span></td>
+              <td><span class="medal-count medal-silver">${v.sent}</span></td>
+              <td><span class="medal-count medal-bronze">${v.total}</span></td>
+              <td style="font-weight:600;color:var(--green);">${formatMoney(v.revenue)}</td>
+              <td><span style="color:${v.conversionRate >= 50 ? 'var(--green)' : v.conversionRate >= 25 ? 'var(--yellow)' : 'var(--text3)'};">${v.conversionRate}%</span></td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  ` : '<div style="color:var(--text3);font-size:13px;padding:16px 0;">Aún no hay actividad de ventas</div>';
 
   return `
     <div class="page-header">
@@ -469,6 +588,18 @@ function renderAdminDashboard() {
       <div class="stat-card purple">
         <div class="stat-value">${d.totalClients}</div>
         <div class="stat-label">Clientes</div>
+      </div>
+    </div>
+
+    <!-- Medal Board -->
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header">
+        <span class="card-title" style="font-size:18px;">🏆 Medallero Encom</span>
+        <span style="font-size:11px;color:var(--text3);">🥇 Aprobadas &nbsp;·&nbsp; 🥈 Enviadas &nbsp;·&nbsp; 🥉 Creadas</span>
+      </div>
+      <div class="medal-board">
+        ${podiumHTML}
+        ${medalTableHTML}
       </div>
     </div>
 

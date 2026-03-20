@@ -466,9 +466,9 @@ route('GET', '/api/dashboard', async (req, res) => {
     }
   });
 
-  // Per vendedor stats
-  const vendedores = users.filter(u => u.role === 'vendedor');
-  const vendedorStats = vendedores.map(v => {
+  // Per user stats (ALL users, including admin)
+  const allUsers = users;
+  const vendedorStats = allUsers.map(v => {
     const vp = proposals.filter(p => p.vendedorId === v.id);
     const sent = vp.filter(p => ['sent', 'approved', 'rejected'].includes(p.status));
     const approved = vp.filter(p => p.status === 'approved');
@@ -478,12 +478,21 @@ route('GET', '/api/dashboard', async (req, res) => {
       if (variant) revenue += variant.totalClient || 0;
     });
     return {
-      id: v.id, name: v.name,
+      id: v.id, name: v.name, role: v.role,
       total: vp.length, sent: sent.length, approved: approved.length,
       conversionRate: sent.length > 0 ? Math.round((approved.length / sent.length) * 100) : 0,
       revenue
     };
   });
+
+  // Medal ranking: gold (approved) > silver (sent) > bronze (created) — like Olympics
+  const medalRanking = [...vendedorStats]
+    .filter(v => v.sent > 0 || v.approved > 0 || v.total > 0)
+    .sort((a, b) => {
+      if (b.approved !== a.approved) return b.approved - a.approved;
+      if (b.sent !== a.sent) return b.sent - a.sent;
+      return b.total - a.total;
+    });
 
   // Pending validation
   const pendingValidation = proposals
@@ -524,7 +533,7 @@ route('GET', '/api/dashboard', async (req, res) => {
 
   json(res, {
     total, byStatus, totalProposed, totalApproved,
-    pendingValidation, vendedorStats, recent, monthlyTrend,
+    pendingValidation, vendedorStats, medalRanking, recent, monthlyTrend,
     totalClients: clients.length,
   });
 });
@@ -578,7 +587,18 @@ Para CADA propuesta debes devolver un JSON con esta estructura EXACTA:
   "summary": "Resumen ejecutivo de 3-4 frases impactantes para el inicio del documento"
 }
 
-REGLAS CRÍTICAS:
+REGLAS CRÍTICAS DE PRESUPUESTO (OBLIGATORIAS — NO SALTARSE NUNCA):
+- Si el cliente indica un presupuesto orientativo (ej: "15.000€", "entre 10-20k", "máximo 50.000€"), ese es el TECHO ABSOLUTO. NINGUNA de las 3 propuestas puede superar esa cifra en su totalClient.
+- Las 3 propuestas deben distribuirse DENTRO del presupuesto indicado:
+  · Propuesta 1 (Esencial): ~40-55% del presupuesto máximo. Enfocada, eficiente, alto impacto con lo justo.
+  · Propuesta 2 (Recomendada): ~65-80% del presupuesto máximo. Buen equilibrio entre ambición y coste.
+  · Propuesta 3 (Premium): ~85-100% del presupuesto máximo. La experiencia más completa posible DENTRO del límite.
+- Si el presupuesto es un rango (ej: "10-20k"), usa el valor máximo del rango como techo.
+- Si el cliente dice "No indicado" o no hay presupuesto, entonces sí puedes proponer rangos variados basándote en el tipo de evento y mercado español.
+- VERIFICA: antes de devolver el JSON, comprueba que el campo "totalClient" de CADA propuesta no supere el presupuesto. Si lo supera, reduce servicios o ajusta precios hasta encajar.
+- La suma de (unitPrice * quantity) de todos los servicios DEBE coincidir con el totalClient de esa propuesta. No inventes números que no cuadren.
+
+REGLAS CRÍTICAS DE CONTENIDO:
 - Estás VENDIENDO. Cada palabra debe acercar al cierre. Nada de texto genérico o corporativo vacío.
 - Precios realistas para el mercado español de eventos (investiga mentalmente rangos reales)
 - Margen objetivo 25-50% según servicio
@@ -587,7 +607,7 @@ REGLAS CRÍTICAS:
 - El timeline debe ser creíble y profesional
 - Entre 5-10 servicios/activaciones por propuesta. Cada uno es una SECCIÓN PROPIA en el PDF final.
 - CADA SERVICIO/ACTIVACIÓN debe tener fullDescription (80-120 palabras), objectives (3 concretos) e includes (3-5 elementos específicos). No escatimes aquí: el cliente leerá cada activación como si fuera un mini-proyecto. Debe entender qué es, por qué importa y qué incluye exactamente.
-- La primera propuesta debe ser la más ajustada, la tercera la más premium
+- La primera propuesta debe ser la más ajustada, la tercera la más premium — pero SIEMPRE dentro del techo presupuestario.
 - El storytelling es LO MÁS IMPORTANTE. Si el cliente no se emociona en los primeros párrafos, no sigue leyendo.
 - Escribe en español natural y persuasivo, no en "lenguaje de consultoría"
 - Los nombres de servicios deben sonar a EXPERIENCIA, no a partida presupuestaria. No "Sonido e iluminación" sino "Escenario Inmersivo 360° con Mapping Audiovisual"

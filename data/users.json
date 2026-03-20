@@ -1,26 +1,42 @@
 [
   {
-    "id": "b445fc2b-571d-43b6-8fab-0bbf8f68e5ff",
+    "id": "7267b96a-fd39-4c60-92f4-c095aa7b3a21",
     "name": "Javi",
     "email": "javier@encom.es",
     "passwordHash": "0e89f223e226ae63268cf39152ab75722e811b89d29efb22a852f1667bd22ae0",
     "role": "admin",
-    "createdAt": "2026-03-18T22:57:59.587Z"
+    "createdAt": "2026-03-20T16:49:28.643Z"
   },
   {
-    "id": "7722bfb3-d811-420a-8471-336f67638f59",
-    "name": "Laura Martínez",
-    "email": "laura@encom.es",
-    "passwordHash": "29aa4e58e9c48819e4d076688302a35140aad0f0104e2be10e5e5ccad822d26a",
+    "id": "41cef4f3-d791-42bb-aef8-4466f3190550",
+    "name": "Prada",
+    "email": "prada@encom.es",
+    "passwordHash": "ab6ca302f46469908a299e8f3bfa392bdd84350172c0c8f191249470d227852e",
     "role": "vendedor",
-    "createdAt": "2026-03-18T22:57:59.587Z"
+    "createdAt": "2026-03-20T16:49:28.644Z"
   },
   {
-    "id": "c761b503-0a13-4f04-861f-77fc28554478",
-    "name": "Carlos Ruiz",
-    "email": "carlos@encom.es",
-    "passwordHash": "29aa4e58e9c48819e4d076688302a35140aad0f0104e2be10e5e5ccad822d26a",
+    "id": "e4839738-629e-4c63-90ff-d91a19057a01",
+    "name": "Vicente",
+    "email": "vicente@encom.es",
+    "passwordHash": "ab6ca302f46469908a299e8f3bfa392bdd84350172c0c8f191249470d227852e",
     "role": "vendedor",
-    "createdAt": "2026-03-18T22:57:59.587Z"
+    "createdAt": "2026-03-20T16:49:28.644Z"
+  },
+  {
+    "id": "a799732a-21df-4332-b601-24e046c0ff67",
+    "name": "Jon Fermín",
+    "email": "jonfermin@encom.es",
+    "passwordHash": "ab6ca302f46469908a299e8f3bfa392bdd84350172c0c8f191249470d227852e",
+    "role": "vendedor",
+    "createdAt": "2026-03-20T16:49:28.644Z"
+  },
+  {
+    "id": "c4bb2cf9-70ff-419d-8dcd-f89fad42de0f",
+    "name": "Araujo",
+    "email": "araujo@encom.es",
+    "passwordHash": "ab6ca302f46469908a299e8f3bfa392bdd84350172c0c8f191249470d227852e",
+    "role": "vendedor",
+    "createdAt": "2026-03-20T16:49:28.644Z"
   }
 ]

@@ -35,17 +35,33 @@ const users = [
   },
   {
     id: uuid(),
-    name: 'Laura Martínez',
-    email: 'laura@encom.es',
-    passwordHash: hash('ventas2025'),
+    name: 'Prada',
+    email: 'prada@encom.es',
+    passwordHash: hash('test2026!'),
     role: 'vendedor',
     createdAt: new Date().toISOString(),
   },
   {
     id: uuid(),
-    name: 'Carlos Ruiz',
-    email: 'carlos@encom.es',
-    passwordHash: hash('ventas2025'),
+    name: 'Vicente',
+    email: 'vicente@encom.es',
+    passwordHash: hash('test2026!'),
+    role: 'vendedor',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: uuid(),
+    name: 'Jon Fermín',
+    email: 'jonfermin@encom.es',
+    passwordHash: hash('test2026!'),
+    role: 'vendedor',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: uuid(),
+    name: 'Araujo',
+    email: 'araujo@encom.es',
+    passwordHash: hash('test2026!'),
     role: 'vendedor',
     createdAt: new Date().toISOString(),
   },
@@ -59,5 +75,5 @@ fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
 });
 
 console.log('✅ Seed completado:');
-console.log('   Admin: javier@encom.es / admin2025');
-console.log('   Vendedores: laura@encom.es, carlos@encom.es / ventas2025');
+console.log('   Admin:      javier@encom.es / admin2025');
+console.log('   Vendedores: prada@encom.es, vicente@encom.es, jonfermin@encom.es, araujo@encom.es / test2026!');
