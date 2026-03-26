@@ -125,7 +125,33 @@ route('GET', '/api/health', async (req, res) => {
 // ════════════════════════════════════════════════════════════
 // SSO (Encom Tools Portal)
 // ════════════════════════════════════════════════════════════
+const httpsModule = require('https');
 const PORTAL_URL = process.env.PORTAL_URL || 'https://tools.encom.es';
+
+function ssoValidate(token) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(`${PORTAL_URL}/api/auth/sso/validate?token=${token}`);
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      rejectUnauthorized: false,
+      headers: { 'Accept': 'application/json' },
+    };
+    const r = httpsModule.request(options, (response) => {
+      let data = '';
+      response.on('data', chunk => data += chunk);
+      response.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error(`SSO parse error: ${data.substring(0, 200)}`)); }
+      });
+    });
+    r.on('error', reject);
+    r.setTimeout(10000, () => { r.destroy(); reject(new Error('SSO timeout')); });
+    r.end();
+  });
+}
 
 route('GET', '/sso', async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -133,8 +159,9 @@ route('GET', '/sso', async (req, res) => {
   if (!ssoToken) { res.writeHead(302, { Location: '/login' }); return res.end(); }
 
   try {
-    const response = await fetch(`${PORTAL_URL}/api/auth/sso/validate?token=${ssoToken}`);
-    const result = await response.json();
+    console.log('[SSO] Validating token against portal:', PORTAL_URL);
+    const result = await ssoValidate(ssoToken);
+    console.log('[SSO] Validation result:', JSON.stringify(result));
     if (!result.valid) { res.writeHead(302, { Location: '/login' }); return res.end(); }
 
     // Create local session
@@ -158,7 +185,7 @@ route('GET', '/sso', async (req, res) => {
       window.location.href = '/';
     </script></head><body></body></html>`);
   } catch (err) {
-    console.error('SSO error:', err);
+    console.error('[SSO] Error:', err.message);
     res.writeHead(302, { Location: '/login' });
     res.end();
   }
