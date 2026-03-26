@@ -180,7 +180,7 @@ route('GET', '/sso', async (req, res) => {
     cors(res);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`<!DOCTYPE html><html><head><script>
-      localStorage.setItem('token', '${localToken}');
+      localStorage.setItem('ev_token', '${localToken}');
       localStorage.setItem('user', JSON.stringify(${JSON.stringify({ id: user.id, name: user.name, email: user.email, role: user.role })}));
       window.location.href = '/';
     </script></head><body></body></html>`);
