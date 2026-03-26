@@ -153,7 +153,7 @@ function ssoValidate(token) {
   });
 }
 
-route('GET', '/sso', async (req, res) => {
+route('GET', '/api/sso', async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const ssoToken = url.searchParams.get('token');
   if (!ssoToken) { res.writeHead(302, { Location: '/login' }); return res.end(); }
