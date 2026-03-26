@@ -123,6 +123,48 @@ route('GET', '/api/health', async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════
+// SSO (Encom Tools Portal)
+// ════════════════════════════════════════════════════════════
+const PORTAL_URL = process.env.PORTAL_URL || 'https://tools.encom.es';
+
+route('GET', '/sso', async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const ssoToken = url.searchParams.get('token');
+  if (!ssoToken) { res.writeHead(302, { Location: '/login' }); return res.end(); }
+
+  try {
+    const response = await fetch(`${PORTAL_URL}/api/auth/sso/validate?token=${ssoToken}`);
+    const result = await response.json();
+    if (!result.valid) { res.writeHead(302, { Location: '/login' }); return res.end(); }
+
+    // Create local session
+    const localToken = generateToken();
+    const users = readJSON('users.json');
+    let user = users.find(u => u.email === result.user.email);
+    if (!user) {
+      user = { id: uuid(), name: result.user.name, email: result.user.email, role: result.user.role || 'user', passwordHash: '', createdAt: now() };
+      users.push(user);
+      writeJSON('users.json', users);
+    }
+    const sessions = readJSON('sessions.json');
+    sessions.push({ token: localToken, userId: user.id, createdAt: now() });
+    writeJSON('sessions.json', sessions);
+
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html><html><head><script>
+      localStorage.setItem('token', '${localToken}');
+      localStorage.setItem('user', JSON.stringify(${JSON.stringify({ id: user.id, name: user.name, email: user.email, role: user.role })}));
+      window.location.href = '/';
+    </script></head><body></body></html>`);
+  } catch (err) {
+    console.error('SSO error:', err);
+    res.writeHead(302, { Location: '/login' });
+    res.end();
+  }
+});
+
+// ════════════════════════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════════════════════════
 route('POST', '/api/auth/login', async (req, res) => {
