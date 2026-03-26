@@ -127,6 +127,7 @@ route('GET', '/api/health', async (req, res) => {
 // ════════════════════════════════════════════════════════════
 const httpsModule = require('https');
 const PORTAL_URL = process.env.PORTAL_URL || 'https://tools.encom.es';
+const SSO_AUTO_CREATE = (process.env.SSO_AUTO_CREATE || 'true') === 'true';
 
 const SSO_STYLE = `*{margin:0;padding:0;box-sizing:border-box}body{background:#0f1117;display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.c{text-align:center}.logo{width:48px;height:48px;background:#FFB800;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;color:#0f1117;margin:0 auto 16px}.t{color:#fff;font-size:15px;margin-bottom:8px}.s{color:rgba(255,255,255,.4);font-size:13px}.e{color:#ef4444;font-size:14px;margin-top:12px}.bar{width:120px;height:3px;background:rgba(255,255,255,.1);border-radius:3px;margin:20px auto 0;overflow:hidden}.bar::after{content:'';display:block;width:40%;height:100%;background:#FFB800;border-radius:3px;animation:slide 1s ease-in-out infinite}@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}a{color:#FFB800;text-decoration:none;font-size:13px;margin-top:16px;display:inline-block}`;
 
@@ -185,6 +186,11 @@ route('GET', '/api/sso', async (req, res) => {
     const users = readJSON('users.json');
     let user = users.find(u => u.email === result.user.email);
     if (!user) {
+      if (!SSO_AUTO_CREATE) {
+        console.log('[SSO] User not found and auto-create disabled:', result.user.email);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(ssoErrorPage('No tienes cuenta en esta herramienta. Contacta con un administrador.'));
+      }
       user = { id: uuid(), name: result.user.name, email: result.user.email, role: result.user.role || 'user', passwordHash: '', createdAt: now() };
       users.push(user);
       writeJSON('users.json', users);
