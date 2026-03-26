@@ -128,6 +128,16 @@ route('GET', '/api/health', async (req, res) => {
 const httpsModule = require('https');
 const PORTAL_URL = process.env.PORTAL_URL || 'https://tools.encom.es';
 
+const SSO_STYLE = `*{margin:0;padding:0;box-sizing:border-box}body{background:#0f1117;display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.c{text-align:center}.logo{width:48px;height:48px;background:#FFB800;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;color:#0f1117;margin:0 auto 16px}.t{color:#fff;font-size:15px;margin-bottom:8px}.s{color:rgba(255,255,255,.4);font-size:13px}.e{color:#ef4444;font-size:14px;margin-top:12px}.bar{width:120px;height:3px;background:rgba(255,255,255,.1);border-radius:3px;margin:20px auto 0;overflow:hidden}.bar::after{content:'';display:block;width:40%;height:100%;background:#FFB800;border-radius:3px;animation:slide 1s ease-in-out infinite}@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}a{color:#FFB800;text-decoration:none;font-size:13px;margin-top:16px;display:inline-block}`;
+
+function ssoErrorPage(message) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${SSO_STYLE}</style></head><body><div class="c"><div class="logo">E</div><div class="t">Error de acceso</div><div class="e">${message}</div><a href="https://tools.encom.es">Volver al portal</a></div></body></html>`;
+}
+
+function ssoLoadingPage(tokenKey, tokenValue, userKey, userValue) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${SSO_STYLE}</style></head><body><div class="c"><div class="logo">E</div><div class="t">Conectando...</div><div class="s">Encom Tools</div><div class="bar"></div></div><script type="text/javascript">try{localStorage.setItem("${tokenKey}","${tokenValue}");localStorage.setItem("${userKey}",'${userValue.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}');window.location.replace("/")}catch(e){document.querySelector(".t").textContent="Error";document.querySelector(".s").textContent=e.message}</script></body></html>`;
+}
+
 function ssoValidate(token) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(`${PORTAL_URL}/api/auth/sso/validate?token=${token}`);
@@ -156,13 +166,19 @@ function ssoValidate(token) {
 route('GET', '/api/sso', async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const ssoToken = url.searchParams.get('token');
-  if (!ssoToken) { res.writeHead(302, { Location: '/login' }); return res.end(); }
+  if (!ssoToken) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(ssoErrorPage('Token no proporcionado'));
+  }
 
   try {
     console.log('[SSO] Validating token against portal:', PORTAL_URL);
     const result = await ssoValidate(ssoToken);
     console.log('[SSO] Validation result:', JSON.stringify(result));
-    if (!result.valid) { res.writeHead(302, { Location: '/login' }); return res.end(); }
+    if (!result.valid) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(ssoErrorPage('Token inválido o expirado. Vuelve al portal e inténtalo de nuevo.'));
+    }
 
     // Create local session
     const localToken = generateToken();
@@ -177,17 +193,14 @@ route('GET', '/api/sso', async (req, res) => {
     sessions.push({ token: localToken, userId: user.id, createdAt: now() });
     writeJSON('sessions.json', sessions);
 
+    const userData = JSON.stringify({ id: user.id, name: user.name, email: user.email, role: user.role });
     cors(res);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`<!DOCTYPE html><html><head><script>
-      localStorage.setItem('ev_token', '${localToken}');
-      localStorage.setItem('user', JSON.stringify(${JSON.stringify({ id: user.id, name: user.name, email: user.email, role: user.role })}));
-      window.location.href = '/';
-    </script></head><body></body></html>`);
+    res.end(ssoLoadingPage('ev_token', localToken, 'user', userData));
   } catch (err) {
     console.error('[SSO] Error:', err.message);
-    res.writeHead(302, { Location: '/login' });
-    res.end();
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(ssoErrorPage('No se pudo conectar con el portal. Inténtalo de nuevo.'));
   }
 });
 
