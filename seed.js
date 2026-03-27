@@ -65,11 +65,19 @@ const users = [
     role: 'vendedor',
     createdAt: new Date().toISOString(),
   },
+  {
+    id: uuid(),
+    name: 'Demo Captador',
+    email: 'captador@encom.es',
+    passwordHash: hash('test2026!'),
+    role: 'captador',
+    createdAt: new Date().toISOString(),
+  },
 ];
 
 fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
 // Only create other files if they don't exist
-['sessions.json', 'clients.json', 'proposals.json'].forEach(f => {
+['sessions.json', 'clients.json', 'proposals.json', 'leads.json'].forEach(f => {
   const fp = path.join(DATA_DIR, f);
   if (!fs.existsSync(fp)) fs.writeFileSync(fp, '[]');
 });
@@ -77,3 +85,4 @@ fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
 console.log('✅ Seed completado:');
 console.log('   Admin:      javier@encom.es / admin2025');
 console.log('   Vendedores: prada@encom.es, vicente@encom.es, jonfermin@encom.es, araujo@encom.es / test2026!');
+console.log('   Captador:   captador@encom.es / test2026!');

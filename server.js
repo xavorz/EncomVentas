@@ -81,6 +81,11 @@ function requireAdmin(req, res) {
   if (user && user.role !== 'admin') { error(res, 'Acceso denegado', 403); return null; }
   return user;
 }
+function requireNotCaptador(req, res) {
+  const user = requireAuth(req, res);
+  if (user && user.role === 'captador') { error(res, 'Acceso denegado para captadores', 403); return null; }
+  return user;
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -191,7 +196,7 @@ route('GET', '/api/sso', async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(ssoErrorPage('No tienes cuenta en esta herramienta. Contacta con un administrador.'));
       }
-      user = { id: uuid(), name: result.user.name, email: result.user.email, role: result.user.role || 'user', passwordHash: '', createdAt: now() };
+      user = { id: uuid(), name: result.user.name, email: result.user.email, role: result.user.role || 'captador', passwordHash: '', createdAt: now() };
       users.push(user);
       writeJSON('users.json', users);
     }
@@ -257,7 +262,7 @@ route('POST', '/api/users', async (req, res) => {
   if (!admin) return;
   const { name, email, password, role } = await parseBody(req);
   if (!name || !email || !password) return error(res, 'Nombre, email y contraseña requeridos');
-  if (!['admin', 'vendedor'].includes(role)) return error(res, 'Rol debe ser admin o vendedor');
+  if (!['admin', 'vendedor', 'captador'].includes(role)) return error(res, 'Rol debe ser admin, vendedor o captador');
   const users = readJSON('users.json');
   if (users.find(u => u.email === email.toLowerCase().trim())) return error(res, 'Email ya existe');
   const u = { id: uuid(), name, email: email.toLowerCase().trim(), passwordHash: hashPassword(password), role, createdAt: now() };
@@ -340,12 +345,152 @@ route('GET', '/api/clients-search', async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════
+// LEADS (Captador system)
+// ════════════════════════════════════════════════════════════
+
+// Create a lead (captador, vendedor, admin)
+route('POST', '/api/leads', async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+  const body = await parseBody(req);
+  const { company, contactName, contactRole, contactEmail, contactPhone, notes } = body;
+
+  // Validation: company AND contactName AND contactRole are REQUIRED
+  if (!company || !contactName || !contactRole) {
+    return error(res, 'Empresa, nombre del contacto y cargo son requeridos');
+  }
+
+  const leads = readJSON('leads.json');
+  const lead = {
+    id: uuid(),
+    company: company.trim(),
+    contactName: contactName.trim(),
+    contactRole: contactRole.trim(),
+    contactEmail: contactEmail ? contactEmail.trim() : '',
+    contactPhone: contactPhone ? contactPhone.trim() : '',
+    notes: notes || '',
+    status: 'pending',
+    createdBy: user.id,
+    createdAt: now(),
+    validatedBy: null,
+    validatedAt: null,
+    validatorNotes: ''
+  };
+  leads.push(lead);
+  writeJSON('leads.json', leads);
+  json(res, lead, 201);
+});
+
+// List leads (captador sees own, vendedor/admin sees all)
+route('GET', '/api/leads', async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+
+  let leads = readJSON('leads.json');
+
+  // Filter based on role
+  if (user.role === 'captador') {
+    leads = leads.filter(l => l.createdBy === user.id);
+  }
+  // vendedor and admin see all
+
+  // Enrich with creator names
+  const users = readJSON('users.json');
+  leads = leads.map(l => ({
+    ...l,
+    creatorName: (users.find(u => u.id === l.createdBy) || {}).name || 'Desconocido'
+  }));
+
+  // Sort by most recent
+  leads.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  json(res, leads);
+});
+
+// Validate or reject a lead (vendedor/admin only)
+route('PATCH', '/api/leads/:id', async (req, res, params) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+
+  if (!['vendedor', 'admin'].includes(user.role)) {
+    return error(res, 'Solo vendedores y admins pueden validar leads', 403);
+  }
+
+  const body = await parseBody(req);
+  const { status, validatorNotes } = body;
+
+  if (!['validated', 'rejected'].includes(status)) {
+    return error(res, 'Estado debe ser validated o rejected');
+  }
+
+  const leads = readJSON('leads.json');
+  const idx = leads.findIndex(l => l.id === params.id);
+  if (idx === -1) return error(res, 'Lead no encontrado', 404);
+
+  leads[idx].status = status;
+  leads[idx].validatedBy = user.id;
+  leads[idx].validatedAt = now();
+  leads[idx].validatorNotes = validatorNotes || '';
+
+  writeJSON('leads.json', leads);
+  json(res, leads[idx]);
+});
+
+// Get ranking of captadores
+route('GET', '/api/leads/ranking', async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+
+  const leads = readJSON('leads.json');
+  const users = readJSON('users.json');
+
+  // Build stats by captador
+  const captadores = users.filter(u => u.role === 'captador');
+  const ranking = captadores.map(c => {
+    const userLeads = leads.filter(l => l.createdBy === c.id);
+    const validatedLeads = userLeads.filter(l => l.status === 'validated').length;
+    const rejectedLeads = userLeads.filter(l => l.status === 'rejected').length;
+    const pendingLeads = userLeads.filter(l => l.status === 'pending').length;
+    const totalLeads = userLeads.length;
+    const validationRate = totalLeads > 0 ? Math.round((validatedLeads / totalLeads) * 100) : 0;
+
+    return {
+      userId: c.id,
+      userName: c.name,
+      totalLeads,
+      validatedLeads,
+      rejectedLeads,
+      pendingLeads,
+      validationRate
+    };
+  });
+
+  // Sort by validated leads descending
+  ranking.sort((a, b) => b.validatedLeads - a.validatedLeads);
+
+  json(res, ranking);
+});
+
+// Delete a lead (admin only)
+route('DELETE', '/api/leads/:id', async (req, res, params) => {
+  const user = requireAdmin(req, res);
+  if (!user) return;
+
+  let leads = readJSON('leads.json');
+  const lead = leads.find(l => l.id === params.id);
+  if (!lead) return error(res, 'Lead no encontrado', 404);
+
+  leads = leads.filter(l => l.id !== params.id);
+  writeJSON('leads.json', leads);
+  json(res, { ok: true });
+});
+
+// ════════════════════════════════════════════════════════════
 // PROPOSALS
 // ════════════════════════════════════════════════════════════
 
 // List proposals (vendedor sees own, admin sees all)
 route('GET', '/api/proposals', async (req, res) => {
-  const user = requireAuth(req, res);
+  const user = requireNotCaptador(req, res);
   if (!user) return;
   let proposals = readJSON('proposals.json');
   if (user.role !== 'admin') proposals = proposals.filter(p => p.vendedorId === user.id);
@@ -364,7 +509,7 @@ route('GET', '/api/proposals', async (req, res) => {
 
 // Get single proposal
 route('GET', '/api/proposals/:id', async (req, res, params) => {
-  const user = requireAuth(req, res);
+  const user = requireNotCaptador(req, res);
   if (!user) return;
   const proposals = readJSON('proposals.json');
   const p = proposals.find(p => p.id === params.id);
@@ -380,7 +525,7 @@ route('GET', '/api/proposals/:id', async (req, res, params) => {
 
 // Create proposal (lead intake form)
 route('POST', '/api/proposals', async (req, res) => {
-  const user = requireAuth(req, res);
+  const user = requireNotCaptador(req, res);
   if (!user) return;
   const body = await parseBody(req);
   const { clientId, formData } = body;
@@ -418,7 +563,7 @@ route('POST', '/api/proposals', async (req, res) => {
 
 // Generate proposals with Claude AI
 route('POST', '/api/proposals/:id/generate', async (req, res, params) => {
-  const user = requireAuth(req, res);
+  const user = requireNotCaptador(req, res);
   if (!user) return;
   const body = await parseBody(req);
   const feedback = body.feedback || '';
@@ -456,7 +601,7 @@ route('POST', '/api/proposals/:id/generate', async (req, res, params) => {
 
 // Update proposal status
 route('PATCH', '/api/proposals/:id', async (req, res, params) => {
-  const user = requireAuth(req, res);
+  const user = requireNotCaptador(req, res);
   if (!user) return;
   const body = await parseBody(req);
   const proposals = readJSON('proposals.json');
@@ -514,7 +659,7 @@ route('PATCH', '/api/proposals/:id', async (req, res, params) => {
 
 // Delete proposal (admin or owner if draft)
 route('DELETE', '/api/proposals/:id', async (req, res, params) => {
-  const user = requireAuth(req, res);
+  const user = requireNotCaptador(req, res);
   if (!user) return;
   let proposals = readJSON('proposals.json');
   const p = proposals.find(p => p.id === params.id);
@@ -619,10 +764,30 @@ route('GET', '/api/dashboard', async (req, res) => {
     });
   }
 
+  // Leads stats
+  const leads = readJSON('leads.json');
+  const totalLeads = leads.length;
+  const pendingLeads = leads.filter(l => l.status === 'pending').length;
+  const validatedLeads = leads.filter(l => l.status === 'validated').length;
+  const rejectedLeads = leads.filter(l => l.status === 'rejected').length;
+
+  // Top captadores
+  const captadores = users.filter(u => u.role === 'captador');
+  const topCaptadores = captadores.map(c => {
+    const cLeads = leads.filter(l => l.createdBy === c.id);
+    const validated = cLeads.filter(l => l.status === 'validated').length;
+    return { id: c.id, name: c.name, validatedLeads: validated, totalLeads: cLeads.length };
+  })
+  .filter(c => c.totalLeads > 0)
+  .sort((a, b) => b.validatedLeads - a.validatedLeads)
+  .slice(0, 5);
+
+  const leadsStats = { totalLeads, pendingLeads, validatedLeads, rejectedLeads, topCaptadores };
+
   json(res, {
     total, byStatus, totalProposed, totalApproved,
     pendingValidation, vendedorStats, medalRanking, recent, monthlyTrend,
-    totalClients: clients.length,
+    totalClients: clients.length, leadsStats,
   });
 });
 
@@ -631,37 +796,68 @@ route('GET', '/api/dashboard', async (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 async function callClaude(client, formData, feedback, previousVersions) {
-  const systemPrompt = `Eres el director creativo y comercial de Encom, la empresa referente en España en gestión de eventos, festivales (OWN Valencia, Valencia Game City), activaciones de marca, patrocinios y experiencias digitales e inmersivas.
+  const systemPrompt = `Eres el director comercial de Encom, productor de DreamHack España (12 años), FIA Motorsport Games, ICE Barcelona Esports Arena, OWN Valencia (+20K asistentes, 15 países, 2.8M impresiones RRSS).
 
-Tu misión: crear 3 PROPUESTAS COMERCIALES QUE VENDAN. No estás haciendo un presupuesto — estás construyendo un pitch irresistible. El documento que generes irá directamente al cliente. Debe emocionar, convencer y cerrar.
+Tu misión: 3 PROPUESTAS COMERCIALES QUE VENDAN. Cada propuesta es un pitch irresistible que va directo al cliente. Debe emocionar, convencer y cerrar.
 
-Cada propuesta debe variar en:
-- Nivel de precio y ambición (desde una opción enfocada hasta una experiencia premium transformadora)
-- Concepto creativo diferente (cada una con su propia narrativa y ángulo estratégico)
+TRACK RECORD (úsalo como argumento):
+- DreamHack España (2011-2023): +12 años, mayor punto de encuentro gaming sur Europa
+- OWN Valencia 2025: +20K asistentes únicos, 15 países, +2.8M impresiones RRSS, 8.93M€ valor comunicación
+- Eventos propios: Valencia Game City, ICE Barcelona (45K asistentes), FIA Motorsport Games
+- Partnership: Supercell/Blast, Winamax, Monster Energy, Movistar (2.8M€ en sponsors confirmados)
+Cuándo usarlo: para marcas que dudan ("hemos producido DreamHack 12 años + FIA"), para alcance ("OWN Valencia: +2.8M impresiones"), para instituciones.
 
-Para CADA propuesta debes devolver un JSON con esta estructura EXACTA:
+PRINCIPIOS DE COPYWRITING (aplica en cada sección):
+1. Especificidad (Hopkins): nunca "gran impacto" sino "+428M impresiones digitales en OWN 2025", "alcance estimado 500K impactos en RRSS", "20K asistentes reales de 15 países"
+2. Conversación mental del cliente: qué tiene en la cabeza AHORA (Gen Z, ROI, visibilidad) — empieza por ahí
+3. El headline manda (Caples): "Grefusa Fuel Station: torneo express con premios instantáneos" > "Propuesta de activación"
+4. Investigación (Ogilvy): demuestra que conoces la marca
+5. Tono persona, no corporación (Halbert): "esto es lo que funciona en OWN" > "presentamos nuestra propuesta de colaboración estratégica"
+6. Transparencia (Cialdini): admite limitaciones primero, luego fortalezas ("somos caros, pero diseñamos la experiencia completa")
+
+ESTRUCTURA ACTIVACIONES:
+- SIEMPRE un NOMBRE propio ("Grefusa Fuel Station", "Monster Night Arena", "KFC Pollómetro", no "Stand interactivo")
+- Ser concreto: "torneos express nocturnos con premios inmediatos", no "dinámicas interactivas"
+- Explicar formato, duración, mecánica, qué se lleva el asistente
+
+REGLAS PRESUPUESTO (OBLIGATORIAS):
+- Si cliente da techo (ej: "15.000€", "máximo 50K"), NINGUNA propuesta lo supera
+- 3 propuestas distribuidas: Esencial ~40-55%, Recomendada ~65-80%, Premium ~85-100% del techo
+- Si rango (10-20k), usa máximo como techo. Si "No indicado", propón rangos variados
+- VERIFICA suma servicios = totalClient. Números deben cuadrar exactamente
+- Margen objetivo 25-50% según servicio
+
+REGLAS CONTENIDO:
+- Cada palabra acerca al cierre. Nada genérico o corporativo vacío
+- Precios realistas mercado español
+- KPIs: concretos medibles (no "mejorar marca" sino "500K impactos RRSS")
+- ROI: números estimados que justifiquen inversión
+- Timeline: creíble, profesional
+- 5-10 servicios/activaciones por propuesta
+- CADA servicio: fullDescription 80-120 palabras, 3 objectives concretos, 3-5 elements específicos ("2 pantallas LED 4K", no "pantallas")
+- Propuesta 1: ajustada. Propuesta 3: premium. SIEMPRE dentro presupuesto máximo
+- STORYTELLING ES CRÍTICO: si cliente no se emociona en párrafos 1-2, no sigue leyendo
+- Español natural, persuasivo. Nombres servicios = EXPERIENCIA ("Escenario Inmersivo 360° con Mapping Audiovisual", no "Sonido e iluminación")
+
+JSON ESTRUCTURA (exacta):
 {
   "id": "variant-1",
-  "title": "Nombre potente y creativo del proyecto (que suene a marca)",
-  "tagline": "Frase gancho de 1 línea que resuma la esencia (para la portada del PDF)",
-  "storytelling": "Narrativa de venta de 150-250 palabras. Escribe como si le contaras al cliente la visión del proyecto. Hazle imaginar el día del evento, el impacto, la emoción. Usa lenguaje visual y aspiracional. Esto es lo primero que leerá el cliente — debe engancharse aquí.",
-  "concept": "Descripción del concepto creativo en 80-120 palabras. ¿Qué hace único este enfoque? ¿Cuál es la idea central?",
-  "experience": "Descripción detallada de la experiencia en 100-150 palabras: qué vivirán los asistentes, paso a paso, desde que llegan hasta que se van. Hazlo tangible y sensorial.",
-  "kpis": [
-    {"metric": "Nombre del KPI", "target": "Valor objetivo", "description": "Cómo se mide y por qué importa"}
-  ],
-  "roi": "Texto de 60-100 palabras explicando el retorno esperado de la inversión para el cliente. Incluye estimaciones concretas (alcance, impacto en marca, leads, conversiones, etc.)",
-  "whyEncom": "Texto de 60-80 palabras sobre por qué Encom es el partner ideal para este proyecto (experiencia, casos, capacidades únicas)",
-  "timeline": [
-    {"phase": "Nombre de fase", "duration": "X semanas", "tasks": "Descripción de tareas clave"}
-  ],
+  "title": "Nombre potente (para marca)",
+  "tagline": "1 línea esencia",
+  "storytelling": "150-250 palabras. Visión proyecto, imaginar día evento, impacto, emoción. Visual, aspiracional.",
+  "concept": "80-120 palabras. Qué hace único. Idea central.",
+  "experience": "100-150 palabras. Qué vivirán asistentes paso a paso, tangible, sensorial.",
+  "kpis": [{"metric": "Nombre", "target": "Valor", "description": "Cómo mide, por qué importa"}],
+  "roi": "60-100 palabras. ROI esperado, estimaciones concretas (alcance, impacto marca, leads, conversiones)",
+  "whyEncom": "60-80 palabras. Por qué Encom es ideal (experiencia, casos, capacidades)",
+  "timeline": [{"phase": "Nombre", "duration": "X semanas", "tasks": "Tareas clave"}],
   "services": [
     {
-      "name": "Nombre potente de la activación o servicio (que suene a experiencia, no a partida contable)",
-      "headline": "Frase gancho de 1 línea que resuma qué es y por qué importa",
-      "fullDescription": "Descripción comercial de 80-120 palabras. Explica en qué consiste esta activación: qué vivirá el asistente o el cliente, cómo funciona, qué la hace especial. Vende la experiencia, no el servicio técnico. Si es un stand, describe la experiencia inmersiva. Si es producción, describe el impacto visual que tendrá.",
-      "objectives": ["Objetivo 1 concreto de esta activación", "Objetivo 2", "Objetivo 3"],
-      "includes": ["Qué incluye: elemento 1", "Elemento 2", "Elemento 3 (sé específico: 2 pantallas LED 4K, no solo pantallas)"],
+      "name": "Nombre experiencia",
+      "headline": "1 línea qué es, por qué importa",
+      "fullDescription": "80-120 palabras comercial. Qué vivirá asistente/cliente, cómo funciona, qué especial. Experiencia, no técnico.",
+      "objectives": ["Objetivo 1", "Objetivo 2", "Objetivo 3"],
+      "includes": ["Elemento 1", "Elemento 2", "Elemento 3 (específico)"],
       "quantity": 1,
       "unitPrice": 5000,
       "totalClient": 5000,
@@ -672,65 +868,23 @@ Para CADA propuesta debes devolver un JSON con esta estructura EXACTA:
   "totalCost": 9000,
   "margin": 6000,
   "marginPercent": 40,
-  "summary": "Resumen ejecutivo de 3-4 frases impactantes para el inicio del documento"
+  "summary": "3-4 frases impacto para inicio documento"
 }
 
-REGLAS CRÍTICAS DE PRESUPUESTO (OBLIGATORIAS — NO SALTARSE NUNCA):
-- Si el cliente indica un presupuesto orientativo (ej: "15.000€", "entre 10-20k", "máximo 50.000€"), ese es el TECHO ABSOLUTO. NINGUNA de las 3 propuestas puede superar esa cifra en su totalClient.
-- Las 3 propuestas deben distribuirse DENTRO del presupuesto indicado:
-  · Propuesta 1 (Esencial): ~40-55% del presupuesto máximo. Enfocada, eficiente, alto impacto con lo justo.
-  · Propuesta 2 (Recomendada): ~65-80% del presupuesto máximo. Buen equilibrio entre ambición y coste.
-  · Propuesta 3 (Premium): ~85-100% del presupuesto máximo. La experiencia más completa posible DENTRO del límite.
-- Si el presupuesto es un rango (ej: "10-20k"), usa el valor máximo del rango como techo.
-- Si el cliente dice "No indicado" o no hay presupuesto, entonces sí puedes proponer rangos variados basándote en el tipo de evento y mercado español.
-- VERIFICA: antes de devolver el JSON, comprueba que el campo "totalClient" de CADA propuesta no supere el presupuesto. Si lo supera, reduce servicios o ajusta precios hasta encajar.
-- La suma de (unitPrice * quantity) de todos los servicios DEBE coincidir con el totalClient de esa propuesta. No inventes números que no cuadren.
+Responde SOLO JSON array de 3 objetos. Sin markdown, sin texto adicional.`;
 
-REGLAS CRÍTICAS DE CONTENIDO:
-- Estás VENDIENDO. Cada palabra debe acercar al cierre. Nada de texto genérico o corporativo vacío.
-- Precios realistas para el mercado español de eventos (investiga mentalmente rangos reales)
-- Margen objetivo 25-50% según servicio
-- Los KPIs deben ser concretos y medibles (no "mejorar la imagen de marca" sino "alcance estimado de 500K impactos en RRSS")
-- El ROI debe incluir números estimados que justifiquen la inversión
-- El timeline debe ser creíble y profesional
-- Entre 5-10 servicios/activaciones por propuesta. Cada uno es una SECCIÓN PROPIA en el PDF final.
-- CADA SERVICIO/ACTIVACIÓN debe tener fullDescription (80-120 palabras), objectives (3 concretos) e includes (3-5 elementos específicos). No escatimes aquí: el cliente leerá cada activación como si fuera un mini-proyecto. Debe entender qué es, por qué importa y qué incluye exactamente.
-- La primera propuesta debe ser la más ajustada, la tercera la más premium — pero SIEMPRE dentro del techo presupuestario.
-- El storytelling es LO MÁS IMPORTANTE. Si el cliente no se emociona en los primeros párrafos, no sigue leyendo.
-- Escribe en español natural y persuasivo, no en "lenguaje de consultoría"
-- Los nombres de servicios deben sonar a EXPERIENCIA, no a partida presupuestaria. No "Sonido e iluminación" sino "Escenario Inmersivo 360° con Mapping Audiovisual"
+  let userMessage = `CLIENTE: ${client.company || '?'} (${client.sector || '?'}) | Contacto: ${client.contactName || '?'}
 
-Responde SOLO con un JSON array de 3 objetos. Sin texto adicional, sin markdown, solo JSON válido.`;
+EVENTO: ${formData.eventName || 'Sin nombre'} | Tipo: ${formData.eventType || '?'} | Fecha: ${formData.eventDate || '?'} | Ubicación: ${formData.location || '?'}
+Duración: ${formData.duration || '?'} | Asistentes: ${formData.attendees || '?'} | Presupuesto: ${formData.budget || 'No indicado'}
 
-  let userMessage = `DATOS DEL CLIENTE:
-- Empresa: ${client.company || 'No especificado'}
-- Sector: ${client.sector || 'No especificado'}
-- Tamaño: ${client.size || 'No especificado'}
-- Contacto: ${client.contactName || 'No especificado'}
+OBJETIVOS: ${formData.objectives || 'No especificados'}
 
-DATOS DEL EVENTO/NECESIDAD:
-- Tipo: ${formData.eventType || 'No especificado'}
-- Nombre/Descripción: ${formData.eventName || 'No especificado'}
-- Fecha: ${formData.eventDate || 'No especificada'}
-- Ubicación: ${formData.location || 'No especificada'}
-- Duración: ${formData.duration || 'No especificada'}
-- Asistentes esperados: ${formData.attendees || 'No especificado'}
-- Presupuesto orientativo del cliente: ${formData.budget || 'No indicado'}
+AUDIENCIA: ${formData.targetAudience || 'No especificada'}
 
-OBJETIVOS DEL CLIENTE:
-${formData.objectives || 'No especificados'}
+SERVICIOS: ${(formData.servicesInterest || []).join(', ') || 'Abierto'}
 
-PÚBLICO OBJETIVO:
-${formData.targetAudience || 'No especificado'}
-
-REQUISITOS ESPECIALES:
-${formData.specialRequirements || 'Ninguno'}
-
-SERVICIOS DE INTERÉS:
-${(formData.servicesInterest || []).join(', ') || 'No especificados'}
-
-CONTEXTO ADICIONAL DE LA REUNIÓN:
-${formData.freeContext || 'Sin contexto adicional'}`;
+CONTEXTO: ${formData.freeContext || 'Sin contexto'}`;
 
   if (feedback) {
     userMessage += `\n\nFEEDBACK PARA MEJORAR LAS PROPUESTAS:\n${feedback}`;
@@ -744,7 +898,13 @@ ${formData.freeContext || 'Sin contexto adicional'}`;
   const requestBody = JSON.stringify({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 16000,
-    system: systemPrompt,
+    system: [
+      {
+        type: 'text',
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' }
+      }
+    ],
     messages: [{ role: 'user', content: userMessage }]
   });
 
