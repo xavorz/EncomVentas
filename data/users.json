@@ -38,5 +38,13 @@
     "passwordHash": "ab6ca302f46469908a299e8f3bfa392bdd84350172c0c8f191249470d227852e",
     "role": "vendedor",
     "createdAt": "2026-03-20T16:49:28.644Z"
+  },
+  {
+    "id": "d5cc3e0a-81aa-4f12-b702-1a2b3c4d5e6f",
+    "name": "Demo Captador",
+    "email": "captador@encom.es",
+    "passwordHash": "ab6ca302f46469908a299e8f3bfa392bdd84350172c0c8f191249470d227852e",
+    "role": "captador",
+    "createdAt": "2026-03-27T10:00:00.000Z"
   }
 ]

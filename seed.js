@@ -13,18 +13,13 @@ function uuid() { return crypto.randomUUID(); }
 
 const usersFile = path.join(DATA_DIR, 'users.json');
 
-// Only seed if users.json doesn't exist or is empty
+// Seed users: if file exists, only ADD missing users (by email). Never overwrite.
+let existingUsers = [];
 if (fs.existsSync(usersFile)) {
-  try {
-    const existing = JSON.parse(fs.readFileSync(usersFile, 'utf8'));
-    if (existing.length > 0) {
-      console.log('⏭️  Seed omitido: ya existen usuarios. Datos preservados.');
-      process.exit(0);
-    }
-  } catch {}
+  try { existingUsers = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch {}
 }
 
-const users = [
+const seedUsers = [
   {
     id: uuid(),
     name: 'Javi',
@@ -75,7 +70,20 @@ const users = [
   },
 ];
 
-fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+// Merge: add only users whose email doesn't exist yet
+const existingEmails = new Set(existingUsers.map(u => u.email));
+let added = 0;
+for (const u of seedUsers) {
+  if (!existingEmails.has(u.email)) {
+    existingUsers.push(u);
+    added++;
+    console.log(`   ➕ Nuevo usuario añadido: ${u.email} (${u.role})`);
+  }
+}
+fs.writeFileSync(usersFile, JSON.stringify(existingUsers, null, 2));
+if (added === 0 && existingUsers.length > 0) {
+  console.log('⏭️  Todos los usuarios ya existían. Datos preservados.');
+}
 // Only create other files if they don't exist
 ['sessions.json', 'clients.json', 'proposals.json', 'leads.json'].forEach(f => {
   const fp = path.join(DATA_DIR, f);
