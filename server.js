@@ -488,12 +488,11 @@ route('DELETE', '/api/leads/:id', async (req, res, params) => {
 // PROPOSALS
 // ════════════════════════════════════════════════════════════
 
-// List proposals (vendedor sees own, admin sees all)
+// List proposals (todos los vendedores y admin ven todas — solo el dueño/admin puede modificar)
 route('GET', '/api/proposals', async (req, res) => {
   const user = requireNotCaptador(req, res);
   if (!user) return;
   let proposals = readJSON('proposals.json');
-  if (user.role !== 'admin') proposals = proposals.filter(p => p.vendedorId === user.id);
   // Enrich with client & vendedor names
   const clients = readJSON('clients.json');
   const users = readJSON('users.json');
@@ -507,14 +506,13 @@ route('GET', '/api/proposals', async (req, res) => {
   json(res, proposals);
 });
 
-// Get single proposal
+// Get single proposal (lectura abierta a todos los vendedores y admin)
 route('GET', '/api/proposals/:id', async (req, res, params) => {
   const user = requireNotCaptador(req, res);
   if (!user) return;
   const proposals = readJSON('proposals.json');
   const p = proposals.find(p => p.id === params.id);
   if (!p) return error(res, 'Propuesta no encontrada', 404);
-  if (user.role !== 'admin' && p.vendedorId !== user.id) return error(res, 'Acceso denegado', 403);
   const clients = readJSON('clients.json');
   const users = readJSON('users.json');
   p.clientName = (clients.find(c => c.id === p.clientId) || {}).company || 'Desconocido';
@@ -958,6 +956,241 @@ CONTEXTO: ${formData.freeContext || 'Sin contexto'}`;
     apiReq.end();
   });
 }
+
+// ════════════════════════════════════════════════════════════
+// COLD EMAILS — MÉTODO OWN (importado de Encom Assistant V2.1)
+// ════════════════════════════════════════════════════════════
+
+const COLD_EMAIL_SYSTEM_PROMPT = `Eres un redactor senior de cold outreach B2B especializado en patrocinios, colaboraciones de marca y activaciones para OWN Valencia (festival cultura pop, gaming, K-pop, cosplay, +20K asistentes únicos, 15 países, +2.8M impresiones RRSS, 8.93M€ valor comunicación) y para Encom (productor de DreamHack España 12 años, FIA Motorsport Games, ICE Barcelona, Valencia Game City). Tu trabajo NO es escribir mails bonitos. Tu trabajo es generar interés real, abrir conversación y hacer que la marca vea por qué tiene sentido estar en OWN.
+
+## Objetivo del mail
+El mail no cierra una venta. El mail abre una conversación. Cada mail debe conseguir que el destinatario piense "esto tiene sentido para mi marca", vea OWN como contexto útil (no como "otro evento"), y sienta una mezcla de oportunidad, encaje, curiosidad y a veces necesidad de no quedarse fuera.
+
+## Proceso obligatorio antes de redactar
+1. **Identifica la categoría de la marca** (moda, retail tech, alimentación, telco, gaming hardware, juguetes/familia, banca/crypto, movilidad, etc.).
+2. **Investiga con web_search**: campañas recientes, colaboraciones, activaciones, partnerships, posicionamiento, tono de marca, lanzamientos. NO escribas sin haber buscado. Si no encuentras nada útil, dilo internamente y escribe sin hook personalizado — un mail sin referencia es mejor que un mail con una mentira.
+3. **Decide**: qué pain o insight usar, qué parte de OWN encaja mejor, si meter una idea concreta de activación, si usar prueba social.
+4. **Redacta**: corto o medio, con valor real, sin relleno, tono humano, sin estructura repetitiva.
+
+## Reglas de oro
+
+**1. NO empieces hablando de OWN sin contexto.** En frío, el destinatario no conoce OWN. NO abras con "OWN es...", "Del 3 al 5 de julio celebramos OWN...", "OWN es el mayor evento...". Abre con un insight, un pain, una oportunidad, una observación útil sobre la marca o una referencia a algo que han hecho. Después introduces OWN.
+
+**2. Ataca un pain o una oportunidad real.** Cada vertical tiene pains distintos. No uses el mismo mail para todas las marcas. Ejemplos:
+- moda/lifestyle: seguir siendo relevante en un entorno saturado
+- retail tech: no basta con vender, hay que generar preferencia
+- alimentación/snacks: estar en el momento de consumo, no solo en el lineal
+- telco: conectar con audiencia tech-savvy en contexto real
+- gaming hardware: que el producto se vea funcionando, no se explique
+- juguetes/familia: pasar de producto a experiencia compartida
+
+El pain aparece de forma natural, no como frase de manual. NO escribas "Vuestro gran reto es..." ni "Uno de vuestros principales desafíos es...". Mejor: "Hoy muchas marcas de X están encontrando un límite claro...", "Cada vez más marcas de X buscan...", "Hay contextos donde vuestro producto se entiende mucho mejor...".
+
+**3. Cada frase debe justificar su existencia.** Nada de relleno. PROHIBIDO escribir: "Somos un evento innovador donde las marcas conectan con los jóvenes", "Creemos firmemente en crear sinergias", "Sería una gran oportunidad para ambas partes", "Nos encantaría contar con vosotros". Eso no aporta nada. Sí aporta valor: explicar por qué ese contexto es útil para esa marca, mostrar una activación concreta, conectar con un lanzamiento o collab reciente.
+
+**4. Personaliza de verdad.** Usa la info que has buscado para conectar con OWN. NO expliques a la marca quién es ni qué hace. NO digas "Sois líderes en...", "Lleváis años haciendo...", "Tenéis una trayectoria increíble...". Sí di "He visto vuestra activación con X", "Al ver vuestra colaboración con X, pensé que podía tener sentido escribiros", "La forma en que habéis trabajado X encaja bastante con...".
+
+**5. NO suenes a IA.** Prohibido sonar excesivamente limpio, redondo, marketiniano, abstracto o "perfecto". NUNCA digas "creo". La escritura humana corta frases antes, no lo explica todo, suena conversacional, deja espacio, prioriza la idea sobre la forma.
+
+**6. NO uses siempre la misma estructura.** Evita la plantilla repetitiva pain → OWN → encaje → CTA. Varía el punto de entrada: insight, referencia a campaña, observación sectorial, uso real del producto, oportunidad estratégica, tensión competitiva, caso de éxito, idea concreta, contexto temporal, afinidad con un bloque específico de OWN (K-pop, cosplay, gaming, familia, etc.).
+
+**7. Si metes una idea de activación, simple y visual.** Que se entienda rápido, se visualice en una línea, parezca fácil de imaginar. Ejemplos: cata a ciegas en escenario, zona de descanso, backstage beauty zone, reto con producto, presencia integrada en el bloque K-pop, edición especial llevada al evento. NO desarrolles la producción entera, solo deja ver el potencial.
+
+**8. CTA final natural.** Buenos cierres: "Si tiene sentido explorarlo, lo vemos", "Si os encaja, lo comentamos con calma", "Si te parece, lo vemos y valoramos opciones", "Si tiene sentido, hablamos". Malos cierres: "Esperamos contar con su respuesta", "Quedamos a su disposición", "Agendemos una reunión a la mayor brevedad", "Nos encantaría formar parte de vuestra estrategia".
+
+**9. Asuntos cortos y naturales.** NO metas OWN en el asunto en puerta fría salvo caso muy justificado. Buenos asuntos: "¿Lo vemos con calma?", "Una oportunidad interesante para 2026", "Un encaje natural con vuestro público", "Hay sitios donde tiene sentido estar", "Una idea que puede encajar bien". Evita hype, amenazas, comparativas obvias, claims grandilocuentes.
+
+## Cuándo formal y cuándo cercano
+- **Más formal**: institución pública, fundación, entidad municipal, perfil senior muy corporativo.
+- **Más cercano**: marca de consumo, marketing brand, partnerships, lifestyle, gaming, alimentación, moda. Pero incluso siendo cercano: no infantil, no demasiado "creativo", no fuerces chistes.
+
+## Casos de éxito (Burger King, Domino's, Movistar, Tesla, Nintendo, Monster, Winamax, Supercell, etc.)
+Si hay caso previo relevante para la categoría, úsalo como prueba social — no como catálogo de venta. Ejemplo: "Te adjunto un breve PDF con el caso de Burger King y Domino's para que veas cómo hemos trabajado la categoría". NO conviertas el mail en resumen del PDF.
+
+## Cuando la marca ya ha hecho algo parecido
+1. Menciónalo. 2. Demuestra que lo has visto. 3. Conecta esa lógica con OWN. Ejemplo: "Al ver vuestra colaboración con Pokémon, pensamos que este año puede haber un encaje muy natural en OWN, donde ese universo va a tener bastante peso".
+
+## Reglas operativas (sin excepción)
+- **NO inventes**. Antes de escribir, usa web_search. Si no encuentras nada verificable, escribe sin hook personalizado — un mail sin referencia inventada es mejor que un mail con una mentira.
+- **QUIÉN FIRMA**: el mail lo firma SIEMPRE la persona que se te indica en el bloque "FIRMA" del mensaje del usuario. Usa ese nombre exacto. NUNCA "Javi Carrión, CEO" salvo que sea Javi quien firma.
+- Si no tienes nombre de contacto, pon [Nombre] y avanza.
+- Cuerpo MÁXIMO 6-8 líneas. Si te sale más largo, recórtalo.
+
+## Formato de salida (OBLIGATORIO)
+Devuelve SOLO un objeto JSON válido con esta estructura, sin texto adicional ni markdown:
+{
+  "subject": "asunto corto y natural",
+  "body": "cuerpo del mail completo, con saludos y firma incluidos. Usa \\n para saltos de línea.",
+  "hook_used": "1 línea explicando qué hook real has usado (qué encontraste con web_search) o 'sin hook personalizado' si no encontraste nada"
+}
+
+## Misión final
+Escribe mails que parezcan escritos por una persona real, tengan intención, aporten valor, generen curiosidad y hagan que la marca vea por qué OWN tiene sentido para ellos. NO escribas como una IA que "redacta bien". Escribe como alguien que entiende la marca, entiende el contexto y sabe abrir puertas.`;
+
+async function callClaudeColdEmail({ company, contactName, contactRole, sector, notes, brief, signerName, signerEmail }) {
+  const userMessage = `MARCA: ${company || '?'}
+SECTOR/CATEGORÍA: ${sector || 'no especificado'}
+CONTACTO: ${contactName || '[Nombre]'}${contactRole ? ' (' + contactRole + ')' : ''}
+NOTAS INTERNAS DEL CLIENTE: ${notes || 'sin notas'}
+
+CONTEXTO/HOOK QUE APORTA EL USUARIO (úsalo si es útil, ignóralo si no):
+${brief || '(ninguno — investiga tú con web_search)'}
+
+FIRMA (úsala literal al final del mail):
+${signerName}
+Encom · OWN Valencia
+${signerEmail}
+
+Investiga la marca con web_search antes de escribir. Devuelve SOLO el JSON con subject, body y hook_used.`;
+
+  const requestBody = JSON.stringify({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4000,
+    tools: [
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 5 }
+    ],
+    system: [
+      { type: 'text', text: COLD_EMAIL_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }
+    ],
+    messages: [{ role: 'user', content: userMessage }]
+  });
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(requestBody),
+      }
+    };
+
+    const https = require('https');
+    const apiReq = https.request(options, (apiRes) => {
+      let data = '';
+      apiRes.on('data', chunk => data += chunk);
+      apiRes.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.error) return reject(new Error(result.error.message || 'API error'));
+          // Concat all text blocks (response may include web_search tool blocks)
+          const text = (result.content || [])
+            .filter(b => b.type === 'text')
+            .map(b => b.text)
+            .join('\n')
+            .trim();
+          if (!text) return reject(new Error('Respuesta vacía de Claude'));
+
+          let parsed;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            const match = text.match(/\{[\s\S]*\}/);
+            if (match) {
+              try { parsed = JSON.parse(match[0]); }
+              catch (e) { return reject(new Error('No se pudo parsear el JSON del mail')); }
+            } else {
+              return reject(new Error('No se pudo parsear el JSON del mail'));
+            }
+          }
+          if (!parsed.subject || !parsed.body) {
+            return reject(new Error('JSON sin subject o body'));
+          }
+          resolve(parsed);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    apiReq.on('error', reject);
+    apiReq.write(requestBody);
+    apiReq.end();
+  });
+}
+
+// Generate a cold email
+route('POST', '/api/cold-emails/generate', async (req, res) => {
+  const user = requireNotCaptador(req, res);
+  if (!user) return;
+  if (!ANTHROPIC_API_KEY) return error(res, 'API Key de Anthropic no configurada', 500);
+
+  const body = await parseBody(req);
+  let { clientId, company, contactName, contactRole, sector, notes, brief } = body;
+
+  // If clientId provided, hydrate from CRM
+  if (clientId) {
+    const clients = readJSON('clients.json');
+    const c = clients.find(c => c.id === clientId);
+    if (!c) return error(res, 'Cliente no encontrado', 404);
+    company = company || c.company;
+    contactName = contactName || c.contactName;
+    sector = sector || c.sector;
+    notes = notes || c.notes;
+  }
+
+  if (!company) return error(res, 'Empresa requerida');
+
+  try {
+    const ai = await callClaudeColdEmail({
+      company, contactName, contactRole, sector, notes, brief,
+      signerName: user.name,
+      signerEmail: user.email,
+    });
+
+    const coldEmails = readJSON('cold-emails.json');
+    const record = {
+      id: uuid(),
+      clientId: clientId || null,
+      company,
+      contactName: contactName || '',
+      contactRole: contactRole || '',
+      sector: sector || '',
+      brief: brief || '',
+      subject: ai.subject,
+      body: ai.body,
+      hookUsed: ai.hook_used || '',
+      signerId: user.id,
+      signerName: user.name,
+      signerEmail: user.email,
+      createdAt: now(),
+    };
+    coldEmails.push(record);
+    writeJSON('cold-emails.json', coldEmails);
+    json(res, record, 201);
+  } catch (err) {
+    console.error('Cold email error:', err.message);
+    error(res, 'Error generando mail: ' + err.message, 500);
+  }
+});
+
+// List cold emails (filter by clientId optional)
+route('GET', '/api/cold-emails', async (req, res) => {
+  const user = requireNotCaptador(req, res);
+  if (!user) return;
+  const clientId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('clientId');
+  let coldEmails = readJSON('cold-emails.json');
+  if (user.role !== 'admin') coldEmails = coldEmails.filter(e => e.signerId === user.id);
+  if (clientId) coldEmails = coldEmails.filter(e => e.clientId === clientId);
+  coldEmails.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  json(res, coldEmails);
+});
+
+// Delete a cold email (owner or admin)
+route('DELETE', '/api/cold-emails/:id', async (req, res, params) => {
+  const user = requireNotCaptador(req, res);
+  if (!user) return;
+  let coldEmails = readJSON('cold-emails.json');
+  const target = coldEmails.find(e => e.id === params.id);
+  if (!target) return error(res, 'Mail no encontrado', 404);
+  if (user.role !== 'admin' && target.signerId !== user.id) return error(res, 'Acceso denegado', 403);
+  coldEmails = coldEmails.filter(e => e.id !== params.id);
+  writeJSON('cold-emails.json', coldEmails);
+  json(res, { ok: true });
+});
 
 // ════════════════════════════════════════════════════════════
 // PDF GENERATION (client-facing, no internal costs)

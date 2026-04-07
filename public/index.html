@@ -254,6 +254,9 @@ let state = {
   loading: false,
   error: null,
   rankingMode: 'ventas',
+  coldEmails: [],
+  coldEmailDraft: null,
+  coldEmailPrefill: null,
 };
 
 // ─── API helpers ────────────────────────────────────────
@@ -314,6 +317,9 @@ async function loadData() {
   }
   try { state.clients = await api('/api/clients'); } catch (e) { console.warn('clients:', e.message); state.clients = []; }
   try { state.notifications = await api('/api/notifications'); } catch (e) { console.warn('notifications:', e.message); state.notifications = []; }
+  if (state.user && state.user.role !== 'captador') {
+    try { state.coldEmails = await api('/api/cold-emails'); } catch (e) { console.warn('coldEmails:', e.message); state.coldEmails = []; }
+  }
   if (state.user && state.user.role === 'admin') {
     try { state.dashboard = await api('/api/dashboard'); } catch (e) { console.warn('dashboard:', e.message); state.dashboard = null; }
   }
@@ -435,6 +441,10 @@ function renderSidebar() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Clientes
       </div>
+      <div class="nav-item ${state.view === 'cold-emails' ? 'active' : ''}" data-view="cold-emails">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Mails en frío
+      </div>
     `;
   }
 
@@ -482,6 +492,7 @@ function renderView() {
     case 'leads': return renderLeadsView();
     case 'new-lead': return renderNewLead();
     case 'clients': return renderClients();
+    case 'cold-emails': return renderColdEmails();
     case 'users': return renderUsers();
     default: return '<p>Vista no encontrada</p>';
   }
@@ -1160,7 +1171,7 @@ function renderProposals() {
             <tr>
               <th>Cliente</th>
               <th>Evento</th>
-              ${state.user.role === 'admin' ? '<th>Vendedor</th>' : ''}
+              <th>Vendedor</th>
               <th>Estado</th>
               <th>Importe</th>
               <th>Fecha</th>
@@ -1170,11 +1181,12 @@ function renderProposals() {
           <tbody>
             ${state.proposals.map(p => {
               const selVariant = p.selectedVariantId ? (p.variants || []).find(v => v.id === p.selectedVariantId) : null;
+              const isMine = p.vendedorId === state.user.id;
               return `
-                <tr>
+                <tr${isMine ? ' style="background:rgba(233,69,96,0.04);"' : ''}>
                   <td><span class="table-link" data-action="view-proposal" data-id="${p.id}">${p.clientName}</span></td>
                   <td>${p.formData.eventName || '-'}</td>
-                  ${state.user.role === 'admin' ? `<td style="font-size:13px;">${p.vendedorName}</td>` : ''}
+                  <td style="font-size:13px;">${p.vendedorName}${isMine ? ' <span style="font-size:10px;color:var(--red);font-weight:700;">· TÚ</span>' : ''}</td>
                   <td>${statusBadge(p.status)}</td>
                   <td style="font-weight:600;">${selVariant ? formatMoney(selVariant.totalClient) : '-'}</td>
                   <td style="font-size:13px;color:var(--text3);">${formatDate(p.createdAt)}</td>
@@ -1528,7 +1540,7 @@ function renderClients() {
     <div class="card">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Empresa</th><th>Contacto</th><th>Sector</th><th>Email</th><th>Propuestas</th></tr></thead>
+          <thead><tr><th>Empresa</th><th>Contacto</th><th>Sector</th><th>Email</th><th>Propuestas</th><th></th></tr></thead>
           <tbody>
             ${state.clients.map(c => {
               const cProposals = state.proposals.filter(p => p.clientId === c.id);
@@ -1539,6 +1551,7 @@ function renderClients() {
                   <td style="font-size:13px;">${c.sector || '-'}</td>
                   <td style="font-size:13px;color:var(--text2);">${c.contactEmail || '-'}</td>
                   <td><span class="badge badge-generated">${cProposals.length}</span></td>
+                  <td><button class="btn btn-sm" style="background:var(--red);color:#fff;font-size:11px;" data-action="cold-email-from-client" data-id="${c.id}">✉ Mail en frío</button></td>
                 </tr>
               `;
             }).join('')}
@@ -1547,6 +1560,113 @@ function renderClients() {
         ${state.clients.length === 0 ? '<div class="empty-state"><h3>Sin clientes</h3><p>Los clientes se crean automáticamente al crear una propuesta</p></div>' : ''}
       </div>
     </div>
+  `;
+}
+
+// ─── COLD EMAILS ────────────────────────────────────────
+function escapeHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderColdEmails() {
+  const prefill = state.coldEmailPrefill || {};
+  const draft = state.coldEmailDraft;
+
+  const draftHTML = draft ? `
+    <div class="card" style="margin-bottom:24px;border:2px solid var(--red);">
+      <div class="card-header">
+        <span class="card-title">✉ Mail generado para ${draft.company}</span>
+        <span style="font-size:11px;color:var(--text3);">${formatDate(draft.createdAt)} · firma: ${draft.signerName}</span>
+      </div>
+      ${draft.hookUsed ? `<div style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:6px;"><strong>Hook usado:</strong> ${escapeHTML(draft.hookUsed)}</div>` : ''}
+      <div class="form-group">
+        <label class="form-label">Asunto</label>
+        <input class="form-input" id="cold-draft-subject" value="${escapeHTML(draft.subject)}" readonly>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cuerpo</label>
+        <textarea class="form-input" id="cold-draft-body" rows="14" readonly style="font-family:inherit;line-height:1.6;">${escapeHTML(draft.body)}</textarea>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button class="btn btn-primary" data-action="copy-cold-email">📋 Copiar mail</button>
+        <button class="btn btn-secondary" data-action="clear-cold-draft">Cerrar</button>
+      </div>
+    </div>
+  ` : '';
+
+  const historyHTML = state.coldEmails.length > 0 ? `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Historial</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Empresa</th><th>Asunto</th><th>Firma</th><th>Fecha</th><th></th></tr></thead>
+          <tbody>
+            ${state.coldEmails.map(e => `
+              <tr>
+                <td style="font-weight:600;">${escapeHTML(e.company)}</td>
+                <td style="font-size:13px;color:var(--text2);">${escapeHTML(e.subject)}</td>
+                <td style="font-size:12px;">${escapeHTML(e.signerName)}</td>
+                <td style="font-size:12px;color:var(--text3);">${formatDate(e.createdAt)}</td>
+                <td>
+                  <button class="btn btn-sm" style="background:var(--bg3);color:var(--text);font-size:11px;" data-action="view-cold-email" data-id="${e.id}">Ver</button>
+                  <button class="btn btn-sm" style="background:var(--red);color:#fff;font-size:11px;margin-left:4px;" data-action="delete-cold-email" data-id="${e.id}">×</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ` : '<div class="card"><div class="empty-state"><h3>Sin mails generados</h3><p>Genera tu primer mail en frío con el formulario de arriba</p></div></div>';
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Mails en frío</div>
+        <div class="page-subtitle">Método OWN — investiga, personaliza, abre conversación</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header"><span class="card-title">Generar nuevo mail</span></div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">Empresa *</label>
+          <input class="form-input" id="cold-company" value="${escapeHTML(prefill.company)}" placeholder="Ej: Grefusa">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contacto</label>
+          <input class="form-input" id="cold-contact-name" value="${escapeHTML(prefill.contactName)}" placeholder="Nombre · si no tienes, déjalo vacío">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cargo</label>
+          <input class="form-input" id="cold-contact-role" value="${escapeHTML(prefill.contactRole)}" placeholder="Brand Manager, Marketing Director...">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">Sector / categoría</label>
+          <input class="form-input" id="cold-sector" value="${escapeHTML(prefill.sector)}" placeholder="Snacks, telco, gaming hardware...">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Hook / contexto que aportas (opcional)</label>
+          <input class="form-input" id="cold-brief" placeholder="Lanzamiento, collab reciente, ángulo... (si lo dejas vacío, Claude investiga con web_search)">
+        </div>
+      </div>
+      ${prefill.clientId ? `<input type="hidden" id="cold-client-id" value="${prefill.clientId}">` : '<input type="hidden" id="cold-client-id" value="">'}
+      <div style="display:flex;gap:12px;margin-top:8px;">
+        <button class="btn btn-primary" data-action="generate-cold-email">✉ Generar mail en frío</button>
+        <span style="font-size:12px;color:var(--text3);align-self:center;">Firma: <strong>${state.user.name}</strong> · investiga la marca antes de redactar</span>
+      </div>
+    </div>
+
+    ${draftHTML}
+    ${historyHTML}
   `;
 }
 
@@ -1709,6 +1829,12 @@ function bindEvents() {
           case 'switch-leads-tab': state.leadsTab = el.dataset.tab; render(); break;
           case 'switch-ranking-mode': state.rankingMode = el.dataset.mode; render(); break;
           case 'navigate': state.view = el.dataset.view; render(); break;
+          case 'generate-cold-email': await generateColdEmail(); break;
+          case 'cold-email-from-client': prefillColdEmailFromClient(el.dataset.id); break;
+          case 'view-cold-email': viewColdEmail(el.dataset.id); break;
+          case 'delete-cold-email': await deleteColdEmail(el.dataset.id); break;
+          case 'copy-cold-email': copyColdEmail(); break;
+          case 'clear-cold-draft': state.coldEmailDraft = null; render(); break;
         }
       } catch (err) { alert('Error: ' + err.message); }
     };
@@ -1965,6 +2091,101 @@ async function validateLead(id, status) {
     render();
   } catch (err) {
     alert('Error: ' + err.message);
+  }
+}
+
+// ─── COLD EMAILS ACTIONS ────────────────────────────────
+function prefillColdEmailFromClient(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  state.coldEmailPrefill = {
+    clientId: c.id,
+    company: c.company,
+    contactName: c.contactName || '',
+    contactRole: '',
+    sector: c.sector || '',
+  };
+  state.coldEmailDraft = null;
+  state.view = 'cold-emails';
+  render();
+}
+
+async function generateColdEmail() {
+  const company = document.getElementById('cold-company').value.trim();
+  const contactName = document.getElementById('cold-contact-name').value.trim();
+  const contactRole = document.getElementById('cold-contact-role').value.trim();
+  const sector = document.getElementById('cold-sector').value.trim();
+  const brief = document.getElementById('cold-brief').value.trim();
+  const clientId = document.getElementById('cold-client-id').value || null;
+
+  if (!company) { alert('Empresa requerida'); return; }
+
+  // Loading state
+  const main = document.querySelector('.main');
+  if (main) {
+    main.innerHTML = `
+      <div class="loading" style="min-height:60vh;">
+        <div class="spinner" style="width:60px;height:60px;border-width:4px;"></div>
+        <div class="loading-text" style="font-size:18px;margin-top:24px;">Investigando la marca y redactando el mail...</div>
+        <div style="color:var(--text3);margin-top:8px;">Esto puede tardar 20-40 segundos (web search activado)</div>
+      </div>
+    `;
+  }
+
+  try {
+    const record = await api('/api/cold-emails/generate', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, company, contactName, contactRole, sector, brief })
+    });
+    state.coldEmailDraft = record;
+    state.coldEmails = [record, ...state.coldEmails];
+    // keep prefill so the form preserves the data
+    state.coldEmailPrefill = { clientId, company, contactName, contactRole, sector };
+    render();
+  } catch (err) {
+    alert('Error: ' + err.message);
+    render();
+  }
+}
+
+function viewColdEmail(id) {
+  const e = state.coldEmails.find(x => x.id === id);
+  if (!e) return;
+  state.coldEmailDraft = e;
+  state.coldEmailPrefill = {
+    clientId: e.clientId || '',
+    company: e.company,
+    contactName: e.contactName,
+    contactRole: e.contactRole || '',
+    sector: e.sector,
+  };
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteColdEmail(id) {
+  if (!confirm('¿Eliminar este mail?')) return;
+  try {
+    await api(`/api/cold-emails/${id}`, { method: 'DELETE' });
+    state.coldEmails = state.coldEmails.filter(e => e.id !== id);
+    if (state.coldEmailDraft && state.coldEmailDraft.id === id) state.coldEmailDraft = null;
+    render();
+  } catch (err) { alert('Error: ' + err.message); }
+}
+
+function copyColdEmail() {
+  const subject = document.getElementById('cold-draft-subject').value;
+  const body = document.getElementById('cold-draft-body').value;
+  const text = `Asunto: ${subject}\n\n${body}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => { const btn = document.querySelector('[data-action="copy-cold-email"]'); if (btn) { const old = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(() => btn.textContent = old, 2000); } },
+      () => alert('No se pudo copiar')
+    );
+  } else {
+    const ta = document.getElementById('cold-draft-body');
+    ta.select();
+    document.execCommand('copy');
   }
 }
 
